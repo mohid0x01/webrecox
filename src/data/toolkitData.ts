@@ -2,6 +2,8 @@ export interface AuditTool {
   name: string;
   command: string;
   description: string;
+  /** If set, this tool triggers a real scan via the edge function */
+  scanType?: string;
 }
 
 export interface ToolkitCategory {
@@ -17,8 +19,34 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'Domain Inventory',
     icon: 'Globe',
     tools: [
-      { name: 'Subdomain Discovery', command: `subfinder -d ${target} -all`, description: 'Comprehensive mapping of organization-owned web assets.' },
-      { name: 'Certificate Analysis', command: `curl -s "https://crt.sh/?q=%25.${target}&output=json" | jq -r '.[].name_value' | sort -u`, description: 'Reviewing public transparency logs for asset verification.' },
+      { name: 'Subdomain Discovery', command: `subfinder -d ${target} -all`, description: 'Comprehensive mapping of organization-owned web assets via certificate transparency logs.', scanType: 'subdomain_discovery' },
+      { name: 'Certificate Analysis', command: `curl -s "https://crt.sh/?q=%25.${target}&output=json"`, description: 'Reviewing public transparency logs for asset verification.', scanType: 'certificate_analysis' },
+    ],
+  },
+  {
+    key: 'dnsRecon',
+    label: 'DNS Reconnaissance',
+    icon: 'Radar',
+    tools: [
+      { name: 'DNS Record Enumeration', command: `dig ${target} ANY`, description: 'Full DNS record enumeration including A, AAAA, MX, NS, TXT, CNAME, SOA.', scanType: 'dns_lookup' },
+      { name: 'WHOIS / RDAP Lookup', command: `whois ${target}`, description: 'Domain registration data, nameservers, and expiry from RDAP.', scanType: 'whois_lookup' },
+    ],
+  },
+  {
+    key: 'liveHostDiscovery',
+    label: 'Live Host Discovery',
+    icon: 'Activity',
+    tools: [
+      { name: 'HTTP Probe', command: `httpx -u ${target} -status-code`, description: 'Identifying live and responsive hosts with HTTP/HTTPS status codes.', scanType: 'http_probe' },
+      { name: 'Security Headers Audit', command: `curl -I https://${target}`, description: 'Analyzing security headers like HSTS, CSP, X-Frame-Options.', scanType: 'security_headers' },
+    ],
+  },
+  {
+    key: 'techDetection',
+    label: 'Technology Detection',
+    icon: 'Cpu',
+    tools: [
+      { name: 'Tech Stack Fingerprint', command: `wappalyzer https://${target}`, description: 'Detecting web frameworks, CMS, analytics, and CDN technologies.', scanType: 'tech_detection' },
     ],
   },
   {
@@ -35,7 +63,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'Identity Verification',
     icon: 'Fingerprint',
     tools: [
-      { name: 'Token Integrity', command: `python3 -c "import jwt; print(jwt.decode(open('token.txt').read(), options={'verify_signature': False}))"`, description: 'Analyzing the robustness of session management implementations.' },
+      { name: 'Token Integrity', command: `python3 -c "import jwt..."`, description: 'Analyzing the robustness of session management implementations.' },
       { name: 'Access Control', command: `curl -s -o /dev/null -w "%{http_code}" https://${target}/admin`, description: 'Testing the strength of authenticated endpoint boundaries.' },
     ],
   },
@@ -45,16 +73,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     icon: 'Server',
     tools: [
       { name: 'API Schema Analysis', command: `curl -s https://${target}/graphql?query={__schema{types{name}}}`, description: 'Mapping GraphQL and REST structures for data exposure risks.' },
-      { name: 'Cloud Config Audit', command: `kubectl auth can-i --list --namespace=${target}`, description: 'Validating Kubernetes and Cloud service account permissions.' },
-    ],
-  },
-  {
-    key: 'liveHostDiscovery',
-    label: 'Live Host Discovery',
-    icon: 'Radar',
-    tools: [
-      { name: 'HTTP Probe', command: `httpx -l ${target}_subs.txt -silent -status-code`, description: 'Identifying live and responsive hosts across the target infrastructure.' },
-      { name: 'Port Enumeration', command: `naabu -host ${target} -top-ports 1000`, description: 'Scanning for open network ports and exposed services.' },
+      { name: 'Cloud Config Audit', command: `kubectl auth can-i --list`, description: 'Validating Kubernetes and Cloud service account permissions.' },
     ],
   },
   {
@@ -62,7 +81,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'URL Collection',
     icon: 'Link',
     tools: [
-      { name: 'Wayback Crawl', command: `waybackurls ${target} | sort -u`, description: 'Harvesting historical URLs from web archive records.' },
+      { name: 'Wayback Crawl', command: `waybackurls ${target}`, description: 'Harvesting historical URLs from web archive records.' },
       { name: 'Parameter Mining', command: `paramspider -d ${target}`, description: 'Extracting URL parameters for input vector analysis.' },
     ],
   },
@@ -72,15 +91,6 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     icon: 'FolderSearch',
     tools: [
       { name: 'Path Discovery', command: `ffuf -u https://${target}/FUZZ -w wordlist.txt`, description: 'Enumerating hidden directories and sensitive file paths.' },
-      { name: 'Backup Detection', command: `gobuster dir -u https://${target} -w backup-list.txt`, description: 'Locating exposed backup files and configuration artifacts.' },
-    ],
-  },
-  {
-    key: 'wordpressSecurity',
-    label: 'WordPress Security',
-    icon: 'FileCode',
-    tools: [
-      { name: 'CMS Audit', command: `wpscan --url https://${target} --enumerate vp,vt,u`, description: 'Comprehensive audit of WordPress installations and plugins.' },
     ],
   },
   {
@@ -96,7 +106,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'Subdomain Takeover',
     icon: 'AlertTriangle',
     tools: [
-      { name: 'Dangling DNS', command: `subjack -w ${target}_subs.txt -t 100 -ssl`, description: 'Detecting unclaimed DNS records vulnerable to takeover.' },
+      { name: 'Dangling DNS', command: `subjack -w subs.txt -t 100 -ssl`, description: 'Detecting unclaimed DNS records vulnerable to takeover.' },
     ],
   },
   {
@@ -104,7 +114,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'Git Disclosure',
     icon: 'GitBranch',
     tools: [
-      { name: 'Repository Exposure', command: `git-dumper https://${target}/.git/ output/`, description: 'Checking for exposed version control repositories.' },
+      { name: 'Repository Exposure', command: `git-dumper https://${target}/.git/`, description: 'Checking for exposed version control repositories.' },
     ],
   },
   {
@@ -112,15 +122,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'SSRF Analysis',
     icon: 'Unplug',
     tools: [
-      { name: 'Internal Reach', command: `curl "https://${target}/fetch?url=http://169.254.169.254/latest/meta-data/"`, description: 'Testing server-side request forgery vectors against internal services.' },
-    ],
-  },
-  {
-    key: 'redirectSection',
-    label: 'Open Redirect',
-    icon: 'ExternalLink',
-    tools: [
-      { name: 'Redirect Validation', command: `curl -Ls -o /dev/null -w "%{url_effective}" "https://${target}/redirect?url=https://evil.com"`, description: 'Verifying URL redirect sanitization controls.' },
+      { name: 'Internal Reach', command: `curl "https://${target}/fetch?url=..."`, description: 'Testing server-side request forgery vectors against internal services.' },
     ],
   },
   {
@@ -145,14 +147,6 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     icon: 'Braces',
     tools: [
       { name: 'SSTI Probe', command: `curl "https://${target}/render?name={{7*7}}"`, description: 'Testing server-side template injection in rendering engines.' },
-    ],
-  },
-  {
-    key: 'raceCondSection',
-    label: 'Race Conditions',
-    icon: 'Timer',
-    tools: [
-      { name: 'Concurrency Test', command: `turbo-intruder https://${target}/api/transfer`, description: 'Detecting time-of-check to time-of-use concurrency flaws.' },
     ],
   },
   {
@@ -212,22 +206,6 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     ],
   },
   {
-    key: 'privescSection',
-    label: 'Privilege Escalation',
-    icon: 'TrendingUp',
-    tools: [
-      { name: 'Escalation Paths', command: `linpeas.sh`, description: 'Identifying potential privilege escalation vectors in system configurations.' },
-    ],
-  },
-  {
-    key: 'lateralSection',
-    label: 'Lateral Movement',
-    icon: 'Network',
-    tools: [
-      { name: 'Network Pivoting', command: `crackmapexec smb ${target}/24`, description: 'Assessing internal network traversal and pivoting opportunities.' },
-    ],
-  },
-  {
     key: 'websocketSection',
     label: 'WebSocket Security',
     icon: 'Plug',
@@ -240,7 +218,7 @@ const createToolkitData = (target: string): ToolkitCategory[] => [
     label: 'AI/ML Security',
     icon: 'Brain',
     tools: [
-      { name: 'Model Probing', command: `curl -X POST https://${target}/api/predict -d '{"input":"<adversarial>"}'`, description: 'Evaluating AI model endpoints for adversarial input vulnerabilities.' },
+      { name: 'Model Probing', command: `curl -X POST https://${target}/api/predict`, description: 'Evaluating AI model endpoints for adversarial input vulnerabilities.' },
     ],
   },
 ];
