@@ -123,7 +123,7 @@ const Index = () => {
       .eq('id', cachedScanId)
       .maybeSingle();
     if (data?.scan_data) {
-      const restored = { ...createScanState(), ...data.scan_data } as ScanState;
+      const restored = { ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState;
       setScanState(restored);
     }
     setShowCachedPrompt(false);
@@ -765,7 +765,7 @@ const Index = () => {
                       onClick={async () => {
                         const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
                         if (data?.scan_data) {
-                          const restored = { ...createScanState(), ...data.scan_data } as ScanState;
+                          const restored = { ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState;
                           setScanState(restored);
                           setTarget(data.domain);
                           setActiveTab('sub');
