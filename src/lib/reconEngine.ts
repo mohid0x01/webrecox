@@ -944,7 +944,7 @@ export async function runFullScan(
         const sub = state.subs.find(s => s.subdomain === r.host);
         if (sub) { sub.httpStatus = r.status; sub.alive = r.alive; }
       });
-      onProgress(55 + Math.round((i / live.length) * 10));
+      onProgress(55 + Math.round((i / live.length) * 10), '⚡ HTTP Probe…');
     }
     // Extract tech from probes
     state.probes.forEach(p => p.tech.forEach(t => { if (!state.tech.includes(t)) state.tech.push(t); }));
