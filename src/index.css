@@ -15,8 +15,8 @@
     --popover: 220 30% 4%;
     --popover-foreground: 210 20% 90%;
 
-    --primary: 350 85% 48%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 5%;
 
     --secondary: 220 15% 8%;
     --secondary-foreground: 210 10% 65%;
@@ -24,28 +24,28 @@
     --muted: 220 15% 10%;
     --muted-foreground: 210 10% 40%;
 
-    --accent: 350 85% 48%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 5%;
 
     --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 0 0% 7%;
     --input: 0 0% 7%;
-    --ring: 350 85% 48%;
+    --ring: 38 92% 50%;
 
     --radius: 0.875rem;
 
-    --crimson: 350 85% 48%;
-    --crimson-light: 348 90% 55%;
+    --amber: 38 92% 50%;
+    --amber-light: 42 100% 62%;
     --purple: 258 58% 64%;
     --green: 160 84% 45%;
-    --amber: 38 92% 50%;
+    --crimson: 350 85% 48%;
     --teal: 174 64% 50%;
     --pink: 330 65% 60%;
     --info: 210 100% 56%;
     --surface-elevated: 220 20% 6%;
-    --glow: 0 0 50px hsla(350, 85%, 48%, 0.18);
+    --glow: 0 0 50px hsla(38, 92%, 50%, 0.18);
   }
 }
 
@@ -69,20 +69,20 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
   }
 
-  .text-crimson {
-    color: hsl(var(--crimson));
+  .text-amber-brand {
+    color: hsl(var(--amber));
   }
 
   .bg-surface-elevated {
     background-color: hsl(var(--surface-elevated));
   }
 
-  .border-crimson {
-    border-color: hsl(var(--crimson));
+  .border-amber-brand {
+    border-color: hsl(var(--amber));
   }
 
-  .glow-crimson {
-    box-shadow: 0 0 30px hsla(350, 85%, 48%, 0.2), 0 0 60px hsla(350, 85%, 48%, 0.08);
+  .glow-amber {
+    box-shadow: 0 0 30px hsla(38, 92%, 50%, 0.2), 0 0 60px hsla(38, 92%, 50%, 0.08);
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -95,12 +95,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsla(350, 85%, 48%, 0.2);
+    background: hsla(38, 92%, 50%, 0.2);
     border-radius: 3px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: hsla(350, 85%, 48%, 0.4);
+    background: hsla(38, 92%, 50%, 0.4);
   }
 }
 
@@ -110,41 +110,41 @@
 }
 
 .brand-gradient {
-  background: linear-gradient(90deg, #fff 0%, hsl(var(--crimson)) 25%, #ff6688 50%, hsl(var(--purple)) 75%, hsl(var(--crimson)) 100%);
+  background: linear-gradient(90deg, #fff 0%, hsl(var(--amber)) 25%, #ffcc44 50%, hsl(var(--purple)) 75%, hsl(var(--amber)) 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   animation: brandShimmer 3s linear infinite;
-  filter: drop-shadow(0 0 12px hsla(350, 85%, 48%, 0.45));
+  filter: drop-shadow(0 0 12px hsla(38, 92%, 50%, 0.45));
 }
 
 .hero-gradient {
-  background: linear-gradient(135deg, #fff 15%, hsl(var(--crimson)) 45%, #ff6688 70%, hsl(var(--purple)));
+  background: linear-gradient(135deg, #fff 15%, hsl(var(--amber)) 45%, #ffcc44 70%, hsl(var(--purple)));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .nav-glow-line {
-  background: linear-gradient(90deg, transparent, hsla(350, 85%, 48%, 0.35) 30%, hsla(258, 58%, 64%, 0.3) 70%, transparent);
+  background: linear-gradient(90deg, transparent, hsla(38, 92%, 50%, 0.35) 30%, hsla(258, 58%, 64%, 0.3) 70%, transparent);
 }
 
 .scan-btn-gradient {
-  background: linear-gradient(135deg, hsl(var(--crimson)), hsl(var(--purple)));
-  box-shadow: 0 4px 20px hsla(350, 85%, 48%, 0.25);
+  background: linear-gradient(135deg, hsl(var(--amber)), hsl(var(--purple)));
+  box-shadow: 0 4px 20px hsla(38, 92%, 50%, 0.25);
 }
 
 .scan-btn-gradient:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 28px hsla(350, 85%, 48%, 0.45), 0 0 0 1px hsla(350, 85%, 48%, 0.3);
+  box-shadow: 0 8px 28px hsla(38, 92%, 50%, 0.45), 0 0 0 1px hsla(38, 92%, 50%, 0.3);
 }
 
 .pill-active {
-  background: hsla(350, 85%, 48%, 0.12);
-  border-color: hsla(350, 85%, 48%, 0.35);
-  color: hsl(var(--crimson));
-  box-shadow: 0 0 10px hsla(350, 85%, 48%, 0.15);
+  background: hsla(38, 92%, 50%, 0.12);
+  border-color: hsla(38, 92%, 50%, 0.35);
+  color: hsl(var(--amber));
+  box-shadow: 0 0 10px hsla(38, 92%, 50%, 0.15);
 }
 
 .stat-glow::before {
@@ -154,12 +154,12 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, hsla(350, 85%, 48%, 0.18), transparent);
+  background: linear-gradient(90deg, transparent, hsla(38, 92%, 50%, 0.18), transparent);
 }
 
 .progress-fill {
-  background: linear-gradient(90deg, #880011, #cc1133, #ff2244);
-  box-shadow: 0 0 12px hsla(350, 85%, 48%, 0.7), 0 0 24px hsla(350, 85%, 48%, 0.3);
+  background: linear-gradient(90deg, #996600, #cc9900, #ffcc00);
+  box-shadow: 0 0 12px hsla(38, 92%, 50%, 0.7), 0 0 24px hsla(38, 92%, 50%, 0.3);
 }
 
 /* Noise texture overlay */
