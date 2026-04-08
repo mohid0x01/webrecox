@@ -1879,6 +1879,10 @@ export async function runFullScan(
     { name: 'VirusTotal', fn: () => fetchVirusTotal(domain), id: 'virus' },
     { name: 'BufferOver', fn: () => fetchBufferOver(domain), id: 'bufferover' },
     { name: 'ThreatCrowd', fn: () => fetchThreatCrowd(domain), id: 'threatcrowd' },
+    { name: 'DNSRepo', fn: () => fetchDNSRepo(domain), id: 'dnsrepo' },
+    { name: 'Riddler', fn: () => fetchRiddler(domain), id: 'riddler' },
+    { name: 'Wayback Full', fn: () => fetchWebArchiveFull(domain), id: 'wbfull' },
+    { name: 'DNSx Multi', fn: () => dnsxMultiQuery(domain), id: 'dnsx' },
   ];
 
   const subJobs = subSources.filter(s => sources[s.id] !== false).map(s =>
