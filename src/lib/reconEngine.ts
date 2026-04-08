@@ -40,10 +40,10 @@ export interface ScanState {
   dns: Record<string, DNSRecord[]>;
   eps: EndpointEntry[]; js: EndpointEntry[]; params: Record<string, number>;
   hdrs: any[]; tech: string[]; waf: string;
-  ssl: any[]; whois: any; takeover: any[];
+  ssl: SSLCert[]; whois: any; takeover: TakeoverFinding[];
   otx: { p: number; m: number; u: number; pdns: any[]; };
   github: { orgs: any[]; repos: any[]; };
-  cloud: { s3: any[]; asn: any; };
+  cloud: { s3: S3Finding[]; asn: any; };
   secrets: SecretFinding[];
   corsFindings: CORSFinding[];
   nucleiFindings: NucleiFinding[];
@@ -53,7 +53,7 @@ export interface ScanState {
   cookieFindings: CookieFinding[];
   vulns: VulnFinding[];
   probes: ProbeFinding[];
-  ghLeaks: any[];
+  ghLeaks: GHLeakFinding[];
   uscan: any[];
   idorFindings: IDORFinding[];
   raceFindings: RaceFinding[];
@@ -67,6 +67,12 @@ export interface ScanState {
   jwtFindings: JWTFinding[];
   graphqlFindings: GraphQLFinding[];
   methodsFindings: MethodsFinding[];
+  sstiFindings: SSTIFinding[];
+  vhostFindings: VHostFinding[];
+  emailFindings: EmailSecFinding[];
+  dorks: DorkEntry[];
+  pasteFindings: PasteFinding[];
+  faviconHash: string;
   authSurface: Record<string, string[]>;
   riskScore: number;
   riskGrade: string;
@@ -90,7 +96,9 @@ export function createScanState(): ScanState {
     crlfFindings: [], hostInjectionFindings: [],
     blhFindings: [], bountyFindings: [], depConfFindings: [],
     exploitFindings: [], jwtFindings: [], graphqlFindings: [],
-    methodsFindings: [], authSurface: {},
+    methodsFindings: [], sstiFindings: [], vhostFindings: [],
+    emailFindings: [], dorks: [], pasteFindings: [],
+    faviconHash: '', authSurface: {},
     riskScore: 0, riskGrade: 'LOW',
   };
 }
