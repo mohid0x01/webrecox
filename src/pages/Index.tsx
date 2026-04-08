@@ -1,13 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks } from 'lucide-react';
+import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks, Mail, Cloud, BookOpen, History, Hash, ChevronRight, Volume2, Bell, MapPin, BarChart3, GitCompare, List } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportCSV, exportJSON, exportTXT, exportPDF } from '@/lib/exportUtils';
+import { toast } from 'sonner';
 import {
   runFullScan, createScanState, ScanState, ModuleStatus,
   generateMarkdownReport, generateBurpXML, generateNucleiTargets,
 } from '@/lib/reconEngine';
+import { playScanStart, playScanComplete, playModuleDone, playModuleError, playAlert, playFindingCritical } from '@/lib/soundUtils';
 
-// ── All tabs including new vuln tabs ──
+// ── All tabs ──
 const ALL_TABS = [
   { id: 'sub', label: 'Subs', icon: Globe, cat: 'subdomains' },
   { id: 'dns', label: 'DNS', icon: Radar, cat: 'subdomains' },
@@ -16,43 +18,62 @@ const ALL_TABS = [
   { id: 'js', label: 'JS', icon: FileCode, cat: 'js' },
   { id: 'params', label: 'Params', icon: Key, cat: 'endpoints' },
   { id: 'hdrs', label: 'Headers', icon: Shield, cat: 'intel' },
+  { id: 'ssl', label: 'SSL', icon: Lock, cat: 'intel' },
   { id: 'whois', label: 'WHOIS', icon: Server, cat: 'intel' },
+  { id: 'takeover', label: 'Takeover', icon: AlertTriangle, cat: 'vulns' },
+  { id: 'urlscan', label: 'URLScan', icon: Search, cat: 'intel' },
+  { id: 'intel', label: 'Intel', icon: Eye, cat: 'intel' },
+  { id: 'dorks', label: 'Dorks', icon: BookOpen, cat: 'intel' },
+  { id: 'email', label: 'Email', icon: Mail, cat: 'intel' },
+  { id: 'cloud', label: 'Cloud', icon: Cloud, cat: 'intel' },
+  { id: 'ips', label: 'Unique IPs', icon: MapPin, cat: 'subdomains' },
   { id: 'probe', label: 'Probe', icon: Activity, cat: 'subdomains' },
+  { id: 'adv', label: 'Adv', icon: Zap, cat: 'reports' },
+  { id: 'history', label: 'History', icon: History, cat: 'reports' },
   { id: 'secrets', label: 'Secrets', icon: Lock, cat: 'js' },
   { id: 'vuln', label: 'Vulns', icon: Bug, cat: 'vulns' },
   { id: 'cors', label: 'CORS', icon: Crosshair, cat: 'vulns' },
   { id: 'nuclei', label: 'Nuclei', icon: Skull, cat: 'vulns' },
   { id: 'content', label: 'Content', icon: Layers, cat: 'vulns' },
+  { id: 'ghleaks', label: 'GH Leaks', icon: Code, cat: 'intel' },
+  { id: 'authmap', label: 'AuthMap', icon: Fingerprint, cat: 'intel' },
+  { id: 'certmine', label: 'Cert Mine', icon: Lock, cat: 'intel' },
   { id: 'domxss', label: 'DOM XSS', icon: Code, cat: 'js' },
   { id: 'cookies', label: 'Cookies', icon: Cookie, cat: 'vulns' },
+  { id: 'graphql', label: 'GraphQL', icon: Database, cat: 'vulns' },
+  { id: 'methods', label: 'Methods', icon: ListChecks, cat: 'vulns' },
+  { id: 'vhosts', label: 'VHosts', icon: Server, cat: 'vulns' },
+  { id: 'ssti', label: 'SSTI/SQLi', icon: Terminal, cat: 'vulns' },
+  { id: 'jwt', label: 'JWT', icon: Key, cat: 'js' },
+  { id: 'blh', label: 'BLH', icon: GitBranch, cat: 'vulns' },
+  { id: 'depconf', label: 'Dep Conf', icon: Package, cat: 'vulns' },
+  { id: 'bounty', label: 'Bounty', icon: Award, cat: 'intel' },
+  { id: 'heatmap', label: 'Heatmap', icon: BarChart3, cat: 'reports' },
+  { id: 'risk', label: 'Score', icon: Gauge, cat: 'reports' },
+  { id: 'diff', label: 'Diff', icon: GitCompare, cat: 'reports' },
+  { id: 'queue', label: 'Queue', icon: List, cat: 'reports' },
+  { id: 'darkweb', label: 'Dark Web', icon: Eye, cat: 'intel' },
+  { id: 'breaches', label: 'Breaches', icon: AlertTriangle, cat: 'intel' },
+  { id: 'pastes', label: 'Pastes', icon: FileText, cat: 'intel' },
+  { id: 'exploits', label: 'Exploits', icon: Hammer, cat: 'vulns' },
   { id: 'idor', label: 'IDOR', icon: Fingerprint, cat: 'vulns' },
   { id: 'race', label: 'Race', icon: RefreshCw, cat: 'vulns' },
   { id: 'cache', label: 'Cache Poison', icon: Box, cat: 'vulns' },
   { id: 'crlf', label: 'CRLF', icon: Terminal, cat: 'vulns' },
   { id: 'hostinj', label: 'Host Inj', icon: Network, cat: 'vulns' },
-  { id: 'blh', label: 'BLH', icon: GitBranch, cat: 'vulns' },
-  { id: 'bounty', label: 'BugBounty', icon: Award, cat: 'intel' },
-  { id: 'depconf', label: 'Deps', icon: Package, cat: 'vulns' },
-  { id: 'jwt', label: 'JWT', icon: Key, cat: 'js' },
-  { id: 'graphql', label: 'GraphQL', icon: Database, cat: 'vulns' },
-  { id: 'methods', label: 'Methods', icon: ListChecks, cat: 'vulns' },
-  { id: 'exploits', label: 'Exploits', icon: Hammer, cat: 'vulns' },
-  { id: 'risk', label: 'Risk Score', icon: Gauge, cat: 'reports' },
-  { id: 'darkweb', label: 'Dark Web', icon: Eye, cat: 'intel' },
   { id: 'tech', label: 'Tech', icon: Cpu, cat: 'intel' },
-  { id: 'history', label: 'History', icon: Database, cat: 'reports' },
 ] as const;
 
 type TabId = typeof ALL_TABS[number]['id'];
 
 const CATEGORIES = [
-  { id: 'all', label: '☣ Full Scan', icon: '☣' },
-  { id: 'subdomains', label: '⊕ Subdomains', icon: '⊕' },
-  { id: 'endpoints', label: '⟁ Endpoints', icon: '⟁' },
-  { id: 'js', label: '⚡ JS & Secrets', icon: '⚡' },
-  { id: 'vulns', label: '☠ Vulnerabilities', icon: '☠' },
-  { id: 'intel', label: '⊛ Intelligence', icon: '⊛' },
-  { id: 'reports', label: '⊞ Reports', icon: '⊞' },
+  { id: 'all', label: '☣ Full Scan' },
+  { id: 'subdomains', label: '⊕ Subdomains' },
+  { id: 'endpoints', label: '⟁ Endpoints' },
+  { id: 'js', label: '⚡ JS & Secrets' },
+  { id: 'vulns', label: '☠ Vulnerabilities' },
+  { id: 'intel', label: '⊛ Intelligence' },
+  { id: 'reports', label: '⊞ Reports & Tools' },
 ];
 
 const SCAN_PROFILES = [
@@ -66,14 +87,30 @@ const SUB_SOURCES = [
   { id: 'jldc', label: 'AnubisDB' }, { id: 'rapiddns', label: 'RapidDNS' },
   { id: 'certspot', label: 'CertSpotter' }, { id: 'otxsub', label: 'OTX PassiveDNS' },
   { id: 'urlscan', label: 'URLScan.io' }, { id: 'threatminer', label: 'ThreatMiner' },
-  { id: 'sonar', label: 'Sonar' }, { id: 'wbsubs', label: 'Wayback Subs' },
-  { id: 'virus', label: 'VirusTotal' }, { id: 'brute', label: 'DNS Brute (500+)' },
+  { id: 'sonar', label: 'Sonar/Crobat' }, { id: 'wbsubs', label: 'Wayback Subs' },
+  { id: 'virus', label: 'VirusTotal Subs' }, { id: 'brute', label: 'DNS Brute (500)' },
+  { id: 'bufferover', label: 'BufferOver' }, { id: 'threatcrowd', label: 'ThreatCrowd' },
+  { id: 'dnsrepo', label: 'DNSRepo' }, { id: 'riddler', label: 'Riddler' },
+  { id: 'wbfull', label: 'Wayback Full (1M+)' }, { id: 'dnsx', label: 'DNSx Multi-Query' },
+  // Endpoint sources
   { id: 'wb', label: 'Wayback CDX' }, { id: 'otxurl', label: 'OTX URLs' },
   { id: 'cc', label: 'CommonCrawl' }, { id: 'uscan', label: 'URLScan URLs' },
-  { id: 'jsfind', label: 'JS Secrets' }, { id: 'cors', label: 'CORS Scan' },
+  { id: 'sitemap', label: 'Sitemap Parse' }, { id: 'robotstxt', label: 'robots.txt' },
+  // Analysis sources
+  { id: 'jsfind', label: 'JS Secret Scan' }, { id: 'cors', label: 'CORS Scan' },
   { id: 'content', label: 'Content Discovery' }, { id: 'nuclei', label: 'Nuclei Templates' },
-  { id: 'geo', label: 'IP Geo' }, { id: 'sitemap', label: 'Sitemap' },
-  { id: 'robotstxt', label: 'robots.txt' },
+  { id: 'geo', label: 'IP Geo' }, { id: 'shodan', label: 'Shodan IDB' },
+  { id: 'rdap', label: 'RDAP/WHOIS' }, { id: 'httpheaders', label: 'HTTPHeaders' },
+  { id: 'otxintel', label: 'OTXIntel' }, { id: 'github', label: 'GitHub' },
+  { id: 'clouds3', label: 'Cloud/S3' }, { id: 'gau', label: 'GAU/GetAllUrls' },
+  { id: 'ghep', label: 'GitHub Endpoints' }, { id: 'vtfull', label: 'VirusTotal Full' },
+  { id: 'certmine', label: 'Cert Mine' }, { id: 'favicon', label: 'Favicon Hash' },
+  { id: 'ghleaks', label: 'GitHub Code Leaks' }, { id: 'ssti', label: 'SSTI/SQLi' },
+  { id: 'vhosts', label: 'VHost Fuzz' }, { id: 'email', label: 'Email Security' },
+  { id: 'pastes', label: 'Paste Search' }, { id: 'dorks', label: 'Dork Generator' },
+  // Dark web
+  { id: 'hibp', label: 'HIBP' }, { id: 'hudson', label: 'Hudson Rock' },
+  { id: 'ransomwatch', label: 'RansomWatch' }, { id: 'leakix', label: 'LeakIX' },
 ];
 
 interface ScanHistory { id: string; domain: string; created_at: string; scan_type: string; }
@@ -88,6 +125,8 @@ const Index = () => {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [modules, setModules] = useState<Record<string, { status: ModuleStatus; detail?: string }>>({});
+  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [sources, setSources] = useState<Record<string, boolean>>(() => {
     const s: Record<string, boolean> = {};
     SUB_SOURCES.forEach(src => s[src.id] = true);
@@ -97,9 +136,24 @@ const Index = () => {
   const [showCachedPrompt, setShowCachedPrompt] = useState(false);
   const [cachedScanId, setCachedScanId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [queueDomains, setQueueDomains] = useState('');
+  const [queueStatus, setQueueStatus] = useState<{ domain: string; status: string }[]>([]);
   const scanRef = useRef(false);
+  const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
   useEffect(() => { loadHistory(); }, []);
+
+  // Sound effects on module status changes
+  useEffect(() => {
+    if (!soundEnabled) return;
+    Object.entries(modules).forEach(([name, { status }]) => {
+      const prev = prevModulesRef.current[name]?.status;
+      if (prev === status) return;
+      if (status === 'done' && prev === 'running') playModuleDone();
+      if (status === 'error' && prev === 'running') playModuleError();
+    });
+    prevModulesRef.current = { ...modules };
+  }, [modules, soundEnabled]);
 
   const loadHistory = async () => {
     const { data } = await supabase.from('scan_results').select('id, domain, created_at, scan_type').order('created_at', { ascending: false }).limit(50);
@@ -115,7 +169,10 @@ const Index = () => {
   const loadCachedScan = async () => {
     if (!cachedScanId) return;
     const { data } = await supabase.from('scan_results').select('scan_data').eq('id', cachedScanId).maybeSingle();
-    if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); }
+    if (data?.scan_data) {
+      setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState);
+      toast.success('Loaded cached scan results');
+    }
     setShowCachedPrompt(false);
   };
 
@@ -140,17 +197,42 @@ const Index = () => {
     setProgress(0);
     setProgressLabel('Initializing…');
     setModules({});
+    setExpandedModules(new Set());
     setScanState(createScanState());
     scanRef.current = true;
+    if (soundEnabled) playScanStart();
+    toast.info(`🔍 Starting scan for ${d}`, { duration: 3000 });
     try {
       const result = await runFullScan(d, sources,
-        (name, status, detail) => { setModules(prev => ({ ...prev, [name]: { status, detail } })); },
+        (name, status, detail) => {
+          setModules(prev => ({ ...prev, [name]: { status, detail } }));
+          if (status === 'done') toast.success(`✓ ${name} complete`, { duration: 2000 });
+          if (status === 'error') { toast.error(`✗ ${name} failed: ${detail || 'unknown'}`, { duration: 4000 }); }
+        },
         (pct, label) => { setProgress(pct); setProgressLabel(label); },
         (partial) => { setScanState(prev => ({ ...prev, ...partial })); },
       );
+      // Notify critical findings
+      if (result.secrets.length > 0) { toast.warning(`⚠ ${result.secrets.length} secrets found!`, { duration: 5000 }); if (soundEnabled) playFindingCritical(); }
+      if (result.takeover.length > 0) { toast.warning(`⚠ ${result.takeover.length} takeover candidates!`, { duration: 5000 }); if (soundEnabled) playAlert(); }
+      if (result.darkWebFindings.length > 0) { toast.warning(`⚠ ${result.darkWebFindings.length} dark web findings!`, { duration: 5000 }); }
       await saveScanToDb(result);
-    } catch (e: any) { console.error('Scan failed:', e); }
+      if (soundEnabled) playScanComplete();
+      toast.success(`✅ Scan complete — ${result.subs.length} subs, ${result.eps.length} endpoints, Risk: ${result.riskGrade}`, { duration: 8000 });
+    } catch (e: any) { console.error('Scan failed:', e); toast.error('Scan failed: ' + (e.message || 'Unknown error')); }
     finally { setScanning(false); scanRef.current = false; }
+  };
+
+  const runQueueScan = async () => {
+    const domains = queueDomains.split('\n').map(d => d.trim().toLowerCase()).filter(Boolean);
+    if (!domains.length) return;
+    setQueueStatus(domains.map(d => ({ domain: d, status: 'Pending' })));
+    for (let i = 0; i < domains.length; i++) {
+      setQueueStatus(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'Scanning…' } : item));
+      setTarget(domains[i]);
+      await runNewScan(domains[i]);
+      setQueueStatus(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'Done ✓' } : item));
+    }
   };
 
   const handleExport = (format: string) => {
@@ -162,12 +244,9 @@ const Index = () => {
     } else if (format === 'txt') { exportTXT(generateMarkdownReport(scanState).split('\n'), `${domain}_report`); }
     else if (format === 'pdf') {
       const sections: { heading: string; content: string }[] = [];
-      if (scanState.subs.length) sections.push({ heading: `Subdomains (${scanState.subs.length})`, content: scanState.subs.slice(0, 500).map(s => `${s.subdomain}  ${s.ip || '—'}  [${s.source}]`).join('\n') });
+      if (scanState.subs.length) sections.push({ heading: `Subdomains (${scanState.subs.length})`, content: scanState.subs.slice(0, 1000000).map(s => `${s.subdomain}  ${s.ip || '—'}  [${s.source}]`).join('\n') });
       if (Object.keys(scanState.dns).length) sections.push({ heading: 'DNS Records', content: Object.entries(scanState.dns).filter(([, r]) => r.length).map(([t, recs]) => `${t}:\n${recs.map(r => `  ${r.val}`).join('\n')}`).join('\n\n') });
       if (scanState.secrets.length) sections.push({ heading: `Secrets (${scanState.secrets.length})`, content: scanState.secrets.map(s => `[${s.sev}] ${s.type}: ${s.value.slice(0, 80)} — ${s.file}`).join('\n') });
-      if (scanState.corsFindings.length) sections.push({ heading: `CORS (${scanState.corsFindings.length})`, content: scanState.corsFindings.map(c => `${c.host}: ${c.type} [${c.sev}]`).join('\n') });
-      if (scanState.idorFindings.length) sections.push({ heading: `IDOR (${scanState.idorFindings.length})`, content: scanState.idorFindings.map(f => `[${f.sev}] ${f.url} ?${f.param}=${f.tested}`).join('\n') });
-      if (scanState.darkWebFindings.length) sections.push({ heading: `Dark Web (${scanState.darkWebFindings.length})`, content: scanState.darkWebFindings.map(d => `[${d.severity}] ${d.source}: ${d.title}`).join('\n') });
       if (scanState.riskScore) sections.push({ heading: 'Risk Score', content: `Score: ${scanState.riskScore}/100 — Grade: ${scanState.riskGrade}` });
       if (!sections.length) sections.push({ heading: 'No Data', content: 'Run a scan first.' });
       exportPDF(`Recon Report — ${domain}`, sections);
@@ -178,9 +257,10 @@ const Index = () => {
       const targets = generateNucleiTargets(scanState.subs);
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([targets], { type: 'text/plain' })); a.download = `${domain}_nuclei_targets.txt`; a.click();
     }
+    toast.success(`Exported ${format.toUpperCase()}`);
   };
 
-  const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); };
+  const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!', { duration: 1000 }); };
 
   const filteredTabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
 
@@ -215,6 +295,35 @@ const Index = () => {
     methods: scanState.methodsFindings.length,
     exploits: scanState.exploitFindings.length,
     risk: scanState.riskScore > 0 ? 1 : 0,
+    ssl: scanState.ssl.length,
+    takeover: scanState.takeover.length,
+    ips: Object.keys(scanState.ips).length,
+    email: scanState.emailFindings.length,
+    cloud: scanState.cloud.s3.length,
+    dorks: scanState.dorks.length,
+    ghleaks: scanState.ghLeaks.length,
+    ssti: scanState.sstiFindings?.length || 0,
+    vhosts: scanState.vhostFindings?.length || 0,
+    breaches: scanState.darkWebFindings.filter(d => d.type === 'breach').length,
+    pastes: scanState.pasteFindings?.length || 0,
+    urlscan: scanState.uscan.length,
+    intel: (scanState.otx.p || 0),
+    adv: 0,
+    authmap: Object.values(scanState.authSurface).flat().length,
+    certmine: scanState.ssl.length,
+    heatmap: scanState.subs.length > 0 ? 1 : 0,
+    diff: 0,
+    queue: queueStatus.length,
+    hdrs: scanState.hdrs.length,
+    whois: Object.keys(scanState.whois || {}).length > 0 ? 1 : 0,
+  };
+
+  const toggleModule = (name: string) => {
+    setExpandedModules(prev => {
+      const n = new Set(prev);
+      if (n.has(name)) n.delete(name); else n.add(name);
+      return n;
+    });
   };
 
   return (
@@ -229,6 +338,9 @@ const Index = () => {
             <span className="font-mono text-[8.5px] font-bold tracking-[0.1em] px-[7px] py-[2px] rounded-full bg-primary/10 border border-primary/25 text-primary uppercase">RECON v14.6</span>
           </a>
           <div className="flex-1" />
+          <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-1.5 rounded-lg border transition-all ${soundEnabled ? 'border-primary/25 text-primary' : 'border-border text-muted-foreground'}`}>
+            <Volume2 size={13} />
+          </button>
           <div className="flex items-center gap-2 shrink-0">
             {[
               { fmt: 'json', label: '{}' }, { fmt: 'csv', label: 'CSV' },
@@ -258,7 +370,7 @@ const Index = () => {
             ☣︎ Recon 🗡<br />Engine v14.6
           </h1>
           <p className="text-muted-foreground max-w-[580px] mx-auto leading-[1.7] mb-5">
-            500+ OSINT sources · DNS multi-resolver · Port intel · JS secrets · DOM XSS · CORS · IDOR · Race · Cache Poison · CRLF · GraphQL · Nuclei · Dark Web · NO LIMITS
+            50+ OSINT sources · 42 scan phases · DNS multi-resolver · Port intel · JS secrets · DOM XSS · CORS · IDOR · Race · Cache Poison · CRLF · GraphQL · Nuclei · Dark Web · NO LIMITS
           </p>
         </div>
 
@@ -273,7 +385,7 @@ const Index = () => {
                 className="w-full bg-white/[0.04] border border-primary/10 rounded-[11px] py-[13px] pl-[42px] pr-4 text-foreground font-mono text-[13.5px] outline-none transition-all placeholder:text-muted-foreground focus:border-primary/40 focus:bg-primary/[0.04] focus:shadow-[0_0_0_3px_hsla(38,92%,50%,0.1)]" />
             </div>
             <button onClick={startScan} disabled={!target.trim() || scanning}
-              className="scan-btn-gradient border-none rounded-[11px] px-6 py-[13px] text-white font-bold text-[13px] tracking-[0.03em] cursor-pointer transition-all flex items-center gap-2 disabled:opacity-45 disabled:cursor-not-allowed disabled:transform-none active:translate-y-0">
+              className="scan-btn-gradient border-none rounded-[11px] px-6 py-[13px] text-white font-bold text-[13px] tracking-[0.03em] cursor-pointer transition-all flex items-center gap-2 disabled:opacity-45 disabled:cursor-not-allowed active:translate-y-0">
               {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
               {scanning ? 'Scanning…' : 'Full Scan'}
             </button>
@@ -298,7 +410,7 @@ const Index = () => {
 
           {/* Source Toggles */}
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[9.5px] font-bold tracking-[0.1em] uppercase text-muted-foreground">⟐ Data Sources — click to toggle</span>
+            <span className="text-[9.5px] font-bold tracking-[0.1em] uppercase text-muted-foreground">⟐ Data Sources ({SUB_SOURCES.length}) — click to toggle</span>
             <div className="flex gap-1.5">
               <button onClick={() => setSources(prev => { const n: Record<string, boolean> = {}; Object.keys(prev).forEach(k => n[k] = true); return n; })} className="text-[9.5px] text-muted-foreground bg-white/[0.03] border border-border rounded-[5px] px-2 py-0.5 cursor-pointer hover:text-primary hover:border-primary/25 transition-all">All</button>
               <button onClick={() => setSources(prev => { const n: Record<string, boolean> = {}; Object.keys(prev).forEach(k => n[k] = false); return n; })} className="text-[9.5px] text-muted-foreground bg-white/[0.03] border border-border rounded-[5px] px-2 py-0.5 cursor-pointer hover:text-primary hover:border-primary/25 transition-all">None</button>
@@ -341,7 +453,7 @@ const Index = () => {
           ))}
         </div>
 
-        {/* Progress Bar */}
+        {/* ANIMATED PROGRESS DASHBOARD */}
         {scanning && (
           <div className="bg-card/60 border border-primary/12 rounded-[13px] p-4 mb-4 animate-fade-in-up">
             <div className="flex justify-between items-center mb-2.5">
@@ -351,18 +463,31 @@ const Index = () => {
               </div>
               <span className="text-[11.5px] text-muted-foreground font-mono">{progress}%</span>
             </div>
-            <div className="h-[3px] bg-white/[0.06] rounded-[3px] overflow-hidden">
+            <div className="h-[3px] bg-white/[0.06] rounded-[3px] overflow-hidden mb-3">
               <div className="h-full progress-fill rounded-[3px] transition-[width] duration-400" style={{ width: `${progress}%` }} />
             </div>
+            {/* Module Cards */}
             {Object.keys(modules).length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {Object.entries(modules).map(([name, { status }]) => (
-                  <span key={name} className={`text-[9px] font-mono px-2 py-0.5 rounded-full border ${
-                    status === 'done' ? 'border-[hsl(var(--green))]/30 text-[hsl(var(--green))] bg-[hsl(var(--green))]/5'
-                    : status === 'running' ? 'border-primary/30 text-primary bg-primary/5 animate-pulse'
-                    : status === 'error' ? 'border-destructive/30 text-destructive bg-destructive/5'
-                    : 'border-border text-muted-foreground'
-                  }`}>{name}</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                {Object.entries(modules).map(([name, { status, detail }]) => (
+                  <div key={name} onClick={() => toggleModule(name)}
+                    className={`rounded-lg border p-2 cursor-pointer transition-all ${
+                      status === 'done' ? 'border-[hsl(var(--green))]/30 bg-[hsl(var(--green))]/5'
+                      : status === 'running' ? 'border-primary/30 bg-primary/5 animate-pulse'
+                      : status === 'error' ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-border bg-white/[0.02]'
+                    }`}>
+                    <div className="flex items-center gap-1.5">
+                      {status === 'done' ? <CheckCircle size={10} className="text-[hsl(var(--green))] shrink-0" /> :
+                       status === 'running' ? <Loader2 size={10} className="text-primary animate-spin shrink-0" /> :
+                       status === 'error' ? <AlertCircle size={10} className="text-destructive shrink-0" /> :
+                       <div className="w-2.5 h-2.5 rounded-full bg-muted shrink-0" />}
+                      <span className="text-[9px] font-mono text-foreground/80 truncate">{name}</span>
+                    </div>
+                    {expandedModules.has(name) && detail && (
+                      <div className="mt-1.5 text-[8px] text-muted-foreground font-mono">{detail}</div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -382,8 +507,8 @@ const Index = () => {
             { label: 'Secrets', val: scanState.secrets.length, color: 'hsl(0,72%,60%)' },
             { label: 'CORS', val: scanState.corsFindings.length, color: 'hsl(0,72%,60%)' },
             { label: 'Nuclei', val: scanState.nucleiFindings.length, color: 'hsl(0,72%,60%)' },
+            { label: 'Takeover', val: scanState.takeover.length, color: 'hsl(0,72%,60%)' },
             { label: 'Dark Web', val: scanState.darkWebFindings.length, color: 'hsl(var(--amber))' },
-            { label: 'IDOR', val: scanState.idorFindings.length, color: 'hsl(0,72%,60%)' },
             { label: 'Risk', val: scanState.riskScore, color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' },
           ].map(s => (
             <div key={s.label} className="bg-white/[0.028] border border-border rounded-[13px] px-4 py-3.5 transition-all hover:border-primary/20 hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] relative overflow-hidden stat-glow">
@@ -477,7 +602,7 @@ const Index = () => {
                       <span className="font-mono text-[13px] text-primary font-semibold">{ip}</span>
                     </div>
                     <div className="px-3.5 py-2.5 flex flex-wrap gap-[5px]">
-                      {data.ports.map((p: number) => <span key={p} className="px-2 py-0.5 bg-primary/10 border border-primary/20 rounded text-primary text-[10px] font-mono">{p}</span>)}
+                      {data.ports.map((p: number) => <span key={p} className={`px-2 py-0.5 border rounded text-[10px] font-mono ${[3306,5432,27017,6379,9200,11211,5900,3389,2375].includes(p) ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-primary/10 border-primary/20 text-primary'}`}>{p}</span>)}
                     </div>
                     {data.cves?.length > 0 && <div className="px-3.5 py-2 flex flex-wrap gap-1">{data.cves.slice(0, 10).map((c: string) => <a key={c} href={`https://nvd.nist.gov/vuln/detail/${c}`} target="_blank" rel="noreferrer" className="text-[9px] px-1.5 py-0.5 bg-destructive/10 border border-destructive/20 rounded text-destructive no-underline hover:bg-destructive/20">{c}</a>)}</div>}
                     {data.geo && <div className="px-3.5 py-1.5 text-[9.5px] text-muted-foreground font-mono">{data.geo.city}, {data.geo.country_code} · {data.geo.org}</div>}
@@ -486,9 +611,33 @@ const Index = () => {
               </div>
             ))}
 
+            {/* UNIQUE IPs */}
+            {activeTab === 'ips' && (Object.keys(scanState.ips).length === 0 ? <Empty msg="No IPs discovered yet." /> : (
+              <div>
+                <table className="w-full text-xs"><thead><tr className="text-muted-foreground text-left border-b border-border">
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">IP</th>
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">HOSTS</th>
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">PORTS</th>
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">CVEs</th>
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">GEO</th>
+                  <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">CLOUD</th>
+                </tr></thead>
+                <tbody>{Object.entries(scanState.ips).map(([ip, data]: [string, any], i) => (
+                  <tr key={ip} className="border-t border-white/[0.035] hover:bg-primary/[0.025]">
+                    <td className="py-2 text-primary font-semibold">{ip}</td>
+                    <td className="py-2 text-muted-foreground text-[10px]">{(data.hosts || []).length}</td>
+                    <td className="py-2">{(data.ports || []).slice(0, 8).map((p: number) => <span key={p} className="text-[9px] px-1 bg-primary/10 rounded mr-1">{p}</span>)}</td>
+                    <td className="py-2 text-destructive">{(data.cves || []).length || '—'}</td>
+                    <td className="py-2 text-[10px] text-muted-foreground">{data.geo ? `${data.geo.city || ''}, ${data.geo.country_code || ''}` : '—'}</td>
+                    <td className="py-2 text-[10px] text-[hsl(var(--teal))]">{data.cloud || '—'}</td>
+                  </tr>
+                ))}</tbody></table>
+              </div>
+            ))}
+
             {/* ENDPOINTS */}
             {activeTab === 'ep' && (scanState.eps.length === 0 ? <Empty /> : (
-              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 500).map((ep, i) => (
+              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 1000).map((ep, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={ep.url} target="_blank" rel="noreferrer" className="text-secondary-foreground no-underline hover:text-primary truncate text-[11px]">{ep.url}</a>
@@ -499,7 +648,7 @@ const Index = () => {
 
             {/* JS Files */}
             {activeTab === 'js' && (scanState.js.length === 0 ? <Empty /> : (
-              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 500).map((j, i) => (
+              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 1000).map((j, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px]">{j.url}</a>
@@ -512,14 +661,14 @@ const Index = () => {
             {activeTab === 'params' && (Object.keys(scanState.params).length === 0 ? <Empty /> : (
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(scanState.params).sort((a, b) => b[1] - a[1]).map(([param, count]) => {
-                  const isHigh = /pass|token|secret|key|auth|session|api/i.test(param);
-                  const isMed = /url|redirect|path|file|page|callback|next|return|goto/i.test(param);
+                  const isHigh = /pass|token|secret|key|auth|session|api|id|uid|cmd|exec|file|url|redirect/i.test(param);
+                  const isMed = /search|q|name|email|page|callback|next|return|goto|path/i.test(param);
                   return (
                     <span key={param} onClick={() => copyToClipboard(param)}
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-mono text-[11px] cursor-pointer transition-all border
                         ${isHigh ? 'bg-destructive/7 border-destructive/20 text-destructive hover:bg-destructive/15'
                           : isMed ? 'bg-primary/7 border-primary/20 text-primary hover:bg-primary/15'
-                          : 'bg-white/[0.04] border-white/[0.08] text-secondary-foreground hover:bg-primary/8 hover:border-primary/22 hover:text-primary'}`}>
+                          : 'bg-white/[0.04] border-white/[0.08] text-secondary-foreground hover:bg-primary/8'}`}>
                       {param}<span className="text-[9px] text-muted-foreground ml-0.5">{count}</span>
                     </span>
                   );
@@ -546,6 +695,26 @@ const Index = () => {
               </div>
             ))}
 
+            {/* SSL */}
+            {activeTab === 'ssl' && (scanState.ssl.length === 0 ? <Empty msg="No SSL certificates found." /> : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {scanState.ssl.slice(0, 100).map((c, i) => (
+                  <div key={i} className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Lock size={12} className="text-primary" />
+                      <span className="font-semibold text-[11px] truncate">{c.cn}</span>
+                      {c.wildcard && <span className="text-[8px] px-1.5 py-0.5 bg-primary/10 rounded text-primary">Wildcard</span>}
+                    </div>
+                    <div className="text-[9px] text-muted-foreground ml-5">Issuer: {c.issuer.slice(0, 60)}</div>
+                    <div className="text-[9px] ml-5 flex gap-2">
+                      <span className="text-muted-foreground">{c.notBefore} → {c.notAfter}</span>
+                      <span className={`font-semibold ${c.daysLeft < 30 ? 'text-destructive' : c.daysLeft < 90 ? 'text-primary' : 'text-[hsl(var(--green))]'}`}>{c.daysLeft}d left</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
             {/* WHOIS */}
             {activeTab === 'whois' && (!scanState.whois || Object.keys(scanState.whois).length === 0 ? <Empty /> : (
               <div className="bg-white/[0.028] border border-border rounded-[14px] overflow-hidden">
@@ -558,28 +727,151 @@ const Index = () => {
               </div>
             ))}
 
-            {/* PROBE */}
-            {activeTab === 'probe' && (scanState.probes.length === 0 ? <Empty /> : (
-              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).map((p, i) => (
-                <div key={i} className="mb-2.5 p-3 bg-white/[0.02] border border-border rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <StatusBadge status={p.status} />
-                    <a href={p.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline text-[11px]">{p.url}</a>
-                    {p.alive && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-[hsl(var(--green))]/10 border border-[hsl(var(--green))]/20 text-[hsl(var(--green))]">LIVE</span>}
-                  </div>
-                  {p.title && <div className="text-foreground/70 text-[11px] ml-6">Title: {p.title}</div>}
-                  {p.tech?.length > 0 && <div className="ml-6 flex gap-1 mt-1 flex-wrap">{p.tech.map((t, j) => <span key={j} className="text-[9px] px-1.5 py-0.5 bg-muted rounded">{t}</span>)}</div>}
+            {/* TAKEOVER */}
+            {activeTab === 'takeover' && (scanState.takeover.length === 0 ? <Empty msg="No takeover candidates found." /> : (
+              <div>{scanState.takeover.map((t, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-destructive/5 border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={t.sev} /><span className="font-semibold text-[11px]">{t.subdomain}</span>{t.confirmed && <span className="text-[8px] px-1.5 py-0.5 bg-destructive/10 rounded text-destructive">CONFIRMED</span>}</div>
+                  <div className="text-[10px] font-mono ml-6">CNAME: {t.cname} → {t.service}</div>
                 </div>
               ))}</div>
             ))}
 
-            {/* SECRETS */}
-            {activeTab === 'secrets' && (scanState.secrets.length === 0 ? <Empty msg="No secrets detected yet." /> : (
-              <div>{scanState.secrets.map((s, i) => (
+            {/* EMAIL SECURITY */}
+            {activeTab === 'email' && (scanState.emailFindings.length === 0 ? <Empty msg="No email security data." /> : (
+              <div>{scanState.emailFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-border">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.type}</span><span className="text-[hsl(var(--teal))] text-[9px]">{f.status}</span></div>
+                  <div className="text-[10px] font-mono ml-6 text-muted-foreground break-all">{f.record || f.detail}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* CLOUD / S3 */}
+            {activeTab === 'cloud' && (scanState.cloud.s3.length === 0 ? <Empty msg="No cloud resources found." /> : (
+              <div>{scanState.cloud.s3.map((b, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-border">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={b.sev} /><Cloud size={12} className="text-[hsl(var(--teal))]" /><span className="font-semibold text-[11px]">{b.bucket}</span><span className={`text-[9px] ${b.status === 'PUBLIC' ? 'text-destructive' : 'text-muted-foreground'}`}>{b.status}</span></div>
+                  <a href={b.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{b.url}</a>
+                  {b.files.length > 0 && <div className="ml-6 mt-1 flex flex-wrap gap-1">{b.files.slice(0, 10).map((f, j) => <span key={j} className="text-[9px] px-1.5 py-0.5 bg-destructive/10 rounded text-destructive">{f}</span>)}</div>}
+                </div>
+              ))}</div>
+            ))}
+
+            {/* DORKS */}
+            {activeTab === 'dorks' && (scanState.dorks.length === 0 ? <Empty msg="Run a scan to generate dorks." /> : (
+              <div>
+                {[...new Set(scanState.dorks.map(d => d.category))].map(cat => (
+                  <div key={cat} className="mb-4">
+                    <h3 className="text-[11px] font-bold text-primary tracking-[0.1em] uppercase mb-2">{cat}</h3>
+                    {scanState.dorks.filter(d => d.category === cat).map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 py-[5px] border-b border-white/[0.03]">
+                        <a href={d.url} target="_blank" rel="noreferrer" className="text-secondary-foreground no-underline hover:text-primary text-[10px] truncate">{d.query}</a>
+                        <ExternalLink size={10} className="shrink-0 text-muted-foreground" />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* GH LEAKS */}
+            {activeTab === 'ghleaks' && (scanState.ghLeaks.length === 0 ? <Empty msg="No GitHub leaks found." /> : (
+              <div>{scanState.ghLeaks.map((l, i) => (
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={s.sev} /><span className="text-primary font-semibold text-[11px]">{s.type}</span></div>
-                  <div className="text-secondary-foreground text-[10px] font-mono break-all ml-6">{s.value.slice(0, 120)}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6 mt-1">File: {s.file} · Line: {s.line}</div>
+                  <div className="flex items-center gap-2 mb-1"><Code size={12} className="text-destructive" /><span className="font-semibold text-[11px]">{l.repo}</span><span className="text-destructive text-[9px]">{l.keyword}</span></div>
+                  <div className="text-[10px] font-mono ml-6 text-muted-foreground">{l.file}</div>
+                  <a href={l.url} target="_blank" rel="noreferrer" className="text-primary text-[9px] ml-6 no-underline hover:underline">{l.url}</a>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* AUTH MAP */}
+            {activeTab === 'authmap' && (Object.values(scanState.authSurface).flat().length === 0 ? <Empty msg="No auth surface mapped." /> : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {Object.entries(scanState.authSurface).filter(([, urls]) => urls.length > 0).map(([cat, urls]) => (
+                  <div key={cat} className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                    <div className="text-[10px] font-bold text-primary tracking-[0.1em] uppercase mb-2">{cat} ({urls.length})</div>
+                    {urls.slice(0, 10).map((u, i) => <div key={i} className="text-[10px] text-secondary-foreground truncate py-0.5">{u}</div>)}
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* CERT MINE */}
+            {activeTab === 'certmine' && (scanState.ssl.length === 0 ? <Empty msg="No certificate data." /> : (
+              <div>
+                <div className="mb-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <div className="text-[11px] font-semibold text-primary mb-1">Certificate Summary</div>
+                  <div className="grid grid-cols-4 gap-2 text-[10px]">
+                    <div><span className="text-muted-foreground">Total:</span> {scanState.ssl.length}</div>
+                    <div><span className="text-muted-foreground">Wildcard:</span> {scanState.ssl.filter(c => c.wildcard).length}</div>
+                    <div><span className="text-muted-foreground">Expiring &lt;30d:</span> <span className="text-destructive">{scanState.ssl.filter(c => c.daysLeft < 30).length}</span></div>
+                    <div><span className="text-muted-foreground">Expired:</span> <span className="text-destructive">{scanState.ssl.filter(c => c.daysLeft < 0).length}</span></div>
+                  </div>
+                </div>
+                {scanState.ssl.filter(c => c.wildcard || c.daysLeft < 90 || c.san.length > 3).slice(0, 50).map((c, i) => (
+                  <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-border">
+                    <div className="font-semibold text-[11px]">{c.cn}</div>
+                    <div className="text-[9px] text-muted-foreground">SANs: {c.san.slice(0, 5).join(', ')}{c.san.length > 5 ? ` +${c.san.length - 5} more` : ''}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* PROBE */}
+            {activeTab === 'probe' && (scanState.probes.length === 0 ? <Empty /> : (
+              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).slice(0, 500).map((p, i) => (
+                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03]">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${p.alive ? 'bg-[hsl(var(--green))]' : 'bg-destructive'}`} />
+                  <StatusBadge status={p.status} />
+                  <a href={p.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline text-[11px] truncate">{p.host}</a>
+                  <span className="text-muted-foreground text-[9px] shrink-0">{p.title?.slice(0, 30) || '—'}</span>
+                  <span className="text-muted-foreground text-[9px] shrink-0 ml-auto">{p.server || '—'}</span>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* ADV - External Tools */}
+            {activeTab === 'adv' && (
+              <div>
+                <div className="mb-4 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <div className="text-[11px] font-semibold text-primary mb-2">Quick Checks</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['/robots.txt', '/.git/config', '/.env', '/api/swagger.json', '/graphql', '/.well-known/security.txt', '/sitemap.xml'].map(path => (
+                      <a key={path} href={`https://${scanState.domain || target}${path}`} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-1 bg-white/[0.04] border border-border rounded text-muted-foreground no-underline hover:text-primary hover:border-primary/25">{path}</a>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-[11px] font-semibold text-primary mb-2">External Tools</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { label: 'SecurityTrails', url: `https://securitytrails.com/domain/${scanState.domain || target}` },
+                    { label: 'Shodan', url: `https://www.shodan.io/search?query=hostname:${scanState.domain || target}` },
+                    { label: 'Censys', url: `https://search.censys.io/search?resource=hosts&sort=RELEVANCE&per_page=25&virtual_hosts=EXCLUDE&q=${scanState.domain || target}` },
+                    { label: 'BuiltWith', url: `https://builtwith.com/${scanState.domain || target}` },
+                    { label: 'VirusTotal', url: `https://www.virustotal.com/gui/domain/${scanState.domain || target}` },
+                    { label: 'DNSDumpster', url: `https://dnsdumpster.com/` },
+                    { label: 'FOFA', url: `https://en.fofa.info/result?qbase64=${btoa(`domain="${scanState.domain || target}"`)}` },
+                    { label: 'Hunter.io', url: `https://hunter.io/domain-search/${scanState.domain || target}` },
+                    { label: 'Wayback', url: `https://web.archive.org/web/*/${scanState.domain || target}` },
+                    { label: 'OTX', url: `https://otx.alienvault.com/indicator/domain/${scanState.domain || target}` },
+                    { label: 'crt.sh', url: `https://crt.sh/?q=%25.${scanState.domain || target}` },
+                    { label: 'BGPView', url: `https://bgpview.io/search/${scanState.domain || target}` },
+                  ].map(t => (
+                    <a key={t.label} href={t.url} target="_blank" rel="noreferrer" className="text-[10px] px-2.5 py-1.5 bg-white/[0.04] border border-border rounded-lg text-muted-foreground no-underline hover:text-primary hover:border-primary/25 flex items-center gap-1">{t.label} <ExternalLink size={9} /></a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SECRETS */}
+            {activeTab === 'secrets' && (scanState.secrets.length === 0 ? <Empty msg="No secrets found." /> : (
+              <div>{scanState.secrets.map((s, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-destructive/5 border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={s.sev} /><span className="font-semibold text-[11px]">{s.type}</span></div>
+                  <div className="text-primary text-[10px] font-mono ml-6 break-all">{s.value}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6 truncate">File: {s.file} (line {s.line})</div>
                 </div>
               ))}</div>
             ))}
@@ -589,14 +881,14 @@ const Index = () => {
               <div>{scanState.vulns.map((v, i) => (
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
                   <div className="flex items-center gap-2 mb-1"><SevBadge sev={v.sev} /><span className="font-semibold text-[11px]">{v.type}</span></div>
-                  <div className="text-secondary-foreground text-[10px] font-mono break-all ml-6">{v.url}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">{v.desc}</div>
+                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{v.url}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{v.desc} — Param: {v.param}</div>
                 </div>
               ))}</div>
             ))}
 
             {/* CORS */}
-            {activeTab === 'cors' && (scanState.corsFindings.length === 0 ? <Empty msg="No CORS misconfigs found." /> : (
+            {activeTab === 'cors' && (scanState.corsFindings.length === 0 ? <Empty msg="No CORS issues." /> : (
               <div>{scanState.corsFindings.map((c, i) => (
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
                   <div className="flex items-center gap-2 mb-1"><SevBadge sev={c.sev} /><span className="font-semibold text-[11px]">{c.host}</span><span className="text-muted-foreground text-[9px]">{c.type}</span></div>
@@ -618,7 +910,7 @@ const Index = () => {
             {/* CONTENT */}
             {activeTab === 'content' && (scanState.contentFindings.length === 0 ? <Empty msg="No content discovered." /> : (
               <div>{scanState.contentFindings.map((c, i) => (
-                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
+                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03]">
                   <SevBadge sev={c.sev} /><StatusBadge status={c.status} />
                   <a href={c.url} target="_blank" rel="noreferrer" className="text-secondary-foreground no-underline hover:text-primary truncate text-[11px]">{c.path}</a>
                   <span className="ml-auto text-muted-foreground text-[9px]">{c.size}B</span>
@@ -641,111 +933,7 @@ const Index = () => {
               <div>{scanState.cookieFindings.map((c, i) => (
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-border">
                   <div className="flex items-center gap-2 mb-1"><Cookie size={12} className="text-primary" /><span className="font-semibold text-[11px]">{c.host}</span><span className="font-mono text-primary text-[10px]">{c.name}</span></div>
-                  {c.issues.map((iss, j) => <div key={j} className="flex items-center gap-2 ml-6 text-[10px]"><SevBadge sev={iss.sev} /><span className="text-foreground/80">{iss.issue}</span><span className="text-muted-foreground">— {iss.desc}</span></div>)}
-                </div>
-              ))}</div>
-            ))}
-
-            {/* IDOR */}
-            {activeTab === 'idor' && (scanState.idorFindings.length === 0 ? <Empty msg="No IDOR vulnerabilities found." /> : (
-              <div>{scanState.idorFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">IDOR — {f.param}</span></div>
-                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">Original: {f.original} → Tested: {f.tested} | Status: {f.status} | Size: {f.size}B</div>
-                  <div className="text-muted-foreground text-[9px] ml-6 mt-0.5">{f.desc}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* RACE CONDITIONS */}
-            {activeTab === 'race' && (scanState.raceFindings.length === 0 ? <Empty msg="No race conditions detected." /> : (
-              <div>{scanState.raceFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">Race Condition</span></div>
-                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* CACHE POISONING */}
-            {activeTab === 'cache' && (scanState.cachePoisonFindings.length === 0 ? <Empty msg="No cache poisoning found." /> : (
-              <div>{scanState.cachePoisonFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">Cache Poison — {f.host}</span></div>
-                  <div className="text-[10px] font-mono ml-6">Header: {f.header}: {f.value}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* CRLF */}
-            {activeTab === 'crlf' && (scanState.crlfFindings.length === 0 ? <Empty msg="No CRLF injection found." /> : (
-              <div>{scanState.crlfFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">CRLF Injection</span></div>
-                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">Param: {f.param} | {f.desc}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* HOST HEADER INJECTION */}
-            {activeTab === 'hostinj' && (scanState.hostInjectionFindings.length === 0 ? <Empty msg="No host header injection found." /> : (
-              <div>{scanState.hostInjectionFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">Host Header Injection</span></div>
-                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* BROKEN LINK HIJACKING */}
-            {activeTab === 'blh' && (scanState.blhFindings.length === 0 ? <Empty msg="No broken links found." /> : (
-              <div>{scanState.blhFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.domain}</span></div>
-                  <div className="text-muted-foreground text-[9px] ml-6">{f.status}</div>
-                  <a href={f.registerUrl} target="_blank" rel="noreferrer" className="text-primary text-[9px] ml-6 no-underline hover:underline">Check availability →</a>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* BUG BOUNTY */}
-            {activeTab === 'bounty' && (scanState.bountyFindings.length === 0 ? <Empty msg="No bug bounty programs detected." /> : (
-              <div>{scanState.bountyFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-[hsl(var(--green))]/20">
-                  <div className="flex items-center gap-2 mb-1"><Award size={12} className="text-[hsl(var(--green))]" /><span className="font-semibold text-[11px]">{f.platform}</span><span className="text-[hsl(var(--green))] text-[9px]">{f.status}</span></div>
-                  <a href={f.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{f.url}</a>
-                  {f.contact && <div className="text-muted-foreground text-[9px] ml-6">Contact: {f.contact}</div>}
-                  {f.policy && <div className="text-muted-foreground text-[9px] ml-6">Policy: {f.policy}</div>}
-                </div>
-              ))}</div>
-            ))}
-
-            {/* DEPENDENCY CONFUSION */}
-            {activeTab === 'depconf' && (scanState.depConfFindings.length === 0 ? <Empty msg="No dependency confusion found." /> : (
-              <div>{scanState.depConfFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.pkg}</span></div>
-                  <div className="text-muted-foreground text-[9px] ml-6">Registry: {f.registry} — {f.status}</div>
-                  <div className="text-muted-foreground text-[9px] ml-6">Source: {f.source}</div>
-                </div>
-              ))}</div>
-            ))}
-
-            {/* JWT */}
-            {activeTab === 'jwt' && (scanState.jwtFindings.length === 0 ? <Empty msg="No JWT tokens found." /> : (
-              <div>{scanState.jwtFindings.map((f, i) => (
-                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
-                  <div className="flex items-center gap-2 mb-1"><Key size={12} className="text-primary" /><span className="font-semibold text-[11px]">JWT Token</span><span className="text-muted-foreground text-[9px]">{f.source}</span></div>
-                  <div className="text-[10px] font-mono ml-6 text-muted-foreground">Algorithm: {f.header?.alg || '?'} | Type: {f.header?.typ || '?'}</div>
-                  {f.payload?.iss && <div className="text-[10px] ml-6">Issuer: {f.payload.iss}</div>}
-                  {f.payload?.exp && <div className="text-[10px] ml-6">Expires: {new Date(f.payload.exp * 1000).toLocaleString()}</div>}
-                  {f.issues.map((iss, j) => <div key={j} className="flex items-center gap-2 ml-6 text-[10px] mt-0.5"><SevBadge sev={iss.sev} /><span>{iss.issue}</span></div>)}
-                  {f.file && <div className="text-muted-foreground text-[9px] ml-6 mt-1">File: {f.file}</div>}
+                  {c.issues.map((iss, j) => <div key={j} className="flex items-center gap-2 ml-6 text-[10px]"><SevBadge sev={iss.sev} /><span className="text-foreground/80">{iss.issue}</span></div>)}
                 </div>
               ))}</div>
             ))}
@@ -756,7 +944,6 @@ const Index = () => {
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
                   <div className="flex items-center gap-2 mb-1"><Database size={12} className="text-[hsl(var(--purple))]" /><span className="font-semibold text-[11px]">{f.host}</span><span className="text-[hsl(var(--purple))] text-[9px]">{f.typeCount} types</span></div>
                   <a href={f.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{f.url}</a>
-                  <div className="ml-6 flex flex-wrap gap-1 mt-1">{f.types.slice(0, 15).map((t, j) => <span key={j} className="text-[9px] px-1.5 py-0.5 bg-[hsl(var(--purple))]/10 border border-[hsl(var(--purple))]/20 rounded text-[hsl(var(--purple))]">{t.name}</span>)}</div>
                 </div>
               ))}</div>
             ))}
@@ -772,37 +959,212 @@ const Index = () => {
               ))}</div>
             ))}
 
-            {/* EXPLOITS */}
-            {activeTab === 'exploits' && (scanState.exploitFindings.length === 0 ? <Empty msg="No exploits found." /> : (
-              <div>{scanState.exploitFindings.map((f, i) => (
+            {/* VHOSTS */}
+            {activeTab === 'vhosts' && ((scanState.vhostFindings || []).length === 0 ? <Empty msg="No virtual hosts found." /> : (
+              <div>{(scanState.vhostFindings || []).map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.vhost}</span></div>
+                  <div className="text-[10px] font-mono ml-6">IP: {f.ip} | Status: {f.status} | Size: {f.size}B</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* SSTI/SQLi */}
+            {activeTab === 'ssti' && ((scanState.sstiFindings || []).length === 0 ? <Empty msg="No SSTI/SQLi found." /> : (
+              <div>{(scanState.sstiFindings || []).map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-destructive/5 border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.type}</span></div>
+                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">Param: {f.param} | Payload: {f.payload}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* JWT */}
+            {activeTab === 'jwt' && (scanState.jwtFindings.length === 0 ? <Empty msg="No JWT tokens found." /> : (
+              <div>{scanState.jwtFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
+                  <div className="flex items-center gap-2 mb-1"><Key size={12} className="text-primary" /><span className="font-semibold text-[11px]">JWT Token</span><span className="text-muted-foreground text-[9px]">{f.source}</span></div>
+                  <div className="text-[10px] font-mono ml-6 text-muted-foreground">Algorithm: {f.header?.alg || '?'}</div>
+                  {f.issues.map((iss, j) => <div key={j} className="flex items-center gap-2 ml-6 text-[10px] mt-0.5"><SevBadge sev={iss.sev} /><span>{iss.issue}</span></div>)}
+                </div>
+              ))}</div>
+            ))}
+
+            {/* BLH */}
+            {activeTab === 'blh' && (scanState.blhFindings.length === 0 ? <Empty msg="No broken links found." /> : (
+              <div>{scanState.blhFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-primary/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.domain}</span></div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{f.status}</div>
+                  <a href={f.registerUrl} target="_blank" rel="noreferrer" className="text-primary text-[9px] ml-6 no-underline hover:underline">Check availability →</a>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* DEP CONFUSION */}
+            {activeTab === 'depconf' && (scanState.depConfFindings.length === 0 ? <Empty msg="No dependency confusion found." /> : (
+              <div>{scanState.depConfFindings.map((f, i) => (
                 <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
-                  <div className="flex items-center gap-2 mb-1"><Hammer size={12} className="text-destructive" /><span className="font-semibold text-[11px]">{f.title}</span><span className="text-destructive text-[9px]">{f.edb_id}</span></div>
-                  <div className="text-muted-foreground text-[9px] ml-6">Tech: {f.tech}</div>
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.pkg}</span></div>
+                  <div className="text-muted-foreground text-[9px] ml-6">Registry: {f.registry} — {f.status}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* BOUNTY */}
+            {activeTab === 'bounty' && (scanState.bountyFindings.length === 0 ? <Empty msg="No bug bounty programs detected." /> : (
+              <div>{scanState.bountyFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-[hsl(var(--green))]/20">
+                  <div className="flex items-center gap-2 mb-1"><Award size={12} className="text-[hsl(var(--green))]" /><span className="font-semibold text-[11px]">{f.platform}</span><span className="text-[hsl(var(--green))] text-[9px]">{f.status}</span></div>
                   <a href={f.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{f.url}</a>
                 </div>
               ))}</div>
             ))}
 
+            {/* IDOR */}
+            {activeTab === 'idor' && (scanState.idorFindings.length === 0 ? <Empty msg="No IDOR vulnerabilities found." /> : (
+              <div>{scanState.idorFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">IDOR — {f.param}</span></div>
+                  <div className="text-[10px] font-mono ml-6 text-secondary-foreground break-all">{f.url}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* RACE CONDITIONS */}
+            {activeTab === 'race' && (scanState.raceFindings.length === 0 ? <Empty msg="No race conditions detected." /> : (
+              <div>{scanState.raceFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">Race Condition</span></div>
+                  <div className="text-[10px] font-mono ml-6 break-all">{f.url}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* CACHE POISONING */}
+            {activeTab === 'cache' && (scanState.cachePoisonFindings.length === 0 ? <Empty msg="No cache poisoning found." /> : (
+              <div>{scanState.cachePoisonFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">{f.host}</span></div>
+                  <div className="text-[10px] font-mono ml-6">{f.header}: {f.value}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* CRLF */}
+            {activeTab === 'crlf' && (scanState.crlfFindings.length === 0 ? <Empty msg="No CRLF injection found." /> : (
+              <div>{scanState.crlfFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">CRLF Injection</span></div>
+                  <div className="text-[10px] font-mono ml-6 break-all">{f.url}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* HOST HEADER INJECTION */}
+            {activeTab === 'hostinj' && (scanState.hostInjectionFindings.length === 0 ? <Empty msg="No host header injection found." /> : (
+              <div>{scanState.hostInjectionFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={f.sev} /><span className="font-semibold text-[11px]">Host Header Injection</span></div>
+                  <div className="text-[10px] font-mono ml-6 break-all">{f.url}</div>
+                  <div className="text-muted-foreground text-[9px] ml-6">{f.desc}</div>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* EXPLOITS */}
+            {activeTab === 'exploits' && (scanState.exploitFindings.length === 0 ? <Empty msg="No exploits found." /> : (
+              <div>{scanState.exploitFindings.map((f, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><Hammer size={12} className="text-destructive" /><span className="font-semibold text-[11px]">{f.title}</span><span className="text-destructive text-[9px]">{f.edb_id}</span></div>
+                  <a href={f.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{f.url}</a>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* HEATMAP */}
+            {activeTab === 'heatmap' && (scanState.subs.length === 0 ? <Empty msg="Run a scan to see heatmap." /> : (
+              <div>
+                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of subdomains (0–100)</div>
+                <div className="flex flex-wrap gap-1">
+                  {scanState.subs.slice(0, 500).map((s, i) => {
+                    let score = 0;
+                    if (s.tko) score += 40;
+                    if (s.ports.some(p => [3306,5432,27017,6379,9200,3389].includes(p))) score += 30;
+                    if (/admin|dev|vpn|api|internal|staging|test|beta/.test(s.subdomain)) score += 20;
+                    if (s.alive) score += 10;
+                    const color = score >= 70 ? 'bg-destructive/60' : score >= 40 ? 'bg-primary/50' : score >= 20 ? 'bg-[hsl(var(--info))]/40' : 'bg-white/[0.06]';
+                    return <div key={i} className={`w-4 h-4 rounded-sm ${color} cursor-pointer`} title={`${s.subdomain} (${score})`} />;
+                  })}
+                </div>
+                <div className="mt-3 flex gap-3 text-[9px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20</span>
+                </div>
+              </div>
+            ))}
+
             {/* RISK SCORE */}
             {activeTab === 'risk' && (
               <div className="text-center py-10">
-                <div className="text-[80px] font-bold font-mono leading-none mb-3" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : scanState.riskGrade === 'MEDIUM' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
+                <div className="text-[80px] font-bold font-mono leading-none mb-3" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
                   {scanState.riskScore}
                 </div>
                 <div className="text-[22px] font-bold mb-1" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
                   {scanState.riskGrade || 'N/A'}
                 </div>
                 <p className="text-muted-foreground text-sm">Composite risk score out of 100</p>
-                <div className="mt-8 max-w-md mx-auto text-left">
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">Subdomains:</span> <span className="text-foreground font-semibold">{scanState.subs.length}</span></div>
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">Secrets:</span> <span className="text-destructive font-semibold">{scanState.secrets.length}</span></div>
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">CORS Issues:</span> <span className="text-destructive font-semibold">{scanState.corsFindings.length}</span></div>
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">Nuclei Hits:</span> <span className="text-destructive font-semibold">{scanState.nucleiFindings.length}</span></div>
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">IDOR:</span> <span className="text-destructive font-semibold">{scanState.idorFindings.length}</span></div>
-                    <div className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">Dark Web:</span> <span className="text-primary font-semibold">{scanState.darkWebFindings.length}</span></div>
-                  </div>
+                <div className="mt-8 max-w-md mx-auto text-left grid grid-cols-2 gap-2 text-[11px]">
+                  {[
+                    ['Subdomains', scanState.subs.length], ['Secrets', scanState.secrets.length],
+                    ['CORS Issues', scanState.corsFindings.length], ['Nuclei Hits', scanState.nucleiFindings.length],
+                    ['IDOR', scanState.idorFindings.length], ['Dark Web', scanState.darkWebFindings.length],
+                    ['Takeover', scanState.takeover.length], ['Exploits', scanState.exploitFindings.length],
+                  ].map(([label, val]) => (
+                    <div key={String(label)} className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">{label}:</span> <span className="text-foreground font-semibold">{val}</span></div>
+                  ))}
                 </div>
+              </div>
+            )}
+
+            {/* DIFF */}
+            {activeTab === 'diff' && (
+              <div className="text-center py-10">
+                <div className="text-2xl mb-2.5 opacity-50">⇄</div>
+                <p className="text-muted-foreground text-[13px]">Load two scans from History to compare differences</p>
+                <p className="text-muted-foreground text-[11px] mt-2">New subdomains (green) and removed subdomains (red) will be shown</p>
+              </div>
+            )}
+
+            {/* QUEUE */}
+            {activeTab === 'queue' && (
+              <div>
+                <div className="mb-4">
+                  <div className="text-[11px] font-semibold text-primary mb-2">Batch Scanner — Enter one domain per line</div>
+                  <textarea value={queueDomains} onChange={e => setQueueDomains(e.target.value)} rows={5} placeholder="tesla.com&#10;google.com&#10;github.com"
+                    className="w-full bg-white/[0.04] border border-border rounded-lg p-3 text-foreground font-mono text-[12px] outline-none focus:border-primary/30 resize-none" />
+                  <button onClick={runQueueScan} disabled={scanning || !queueDomains.trim()}
+                    className="mt-2 px-4 py-2 rounded-lg scan-btn-gradient text-white text-xs font-bold disabled:opacity-40">
+                    Start Queue Scan
+                  </button>
+                </div>
+                {queueStatus.length > 0 && (
+                  <table className="w-full text-xs"><thead><tr className="text-muted-foreground border-b border-border">
+                    <th className="pb-2 text-left">Domain</th><th className="pb-2 text-left">Status</th>
+                  </tr></thead>
+                  <tbody>{queueStatus.map((q, i) => (
+                    <tr key={i} className="border-t border-white/[0.035]">
+                      <td className="py-2 text-primary">{q.domain}</td>
+                      <td className={`py-2 ${q.status.includes('Done') ? 'text-[hsl(var(--green))]' : q.status.includes('Scanning') ? 'text-primary' : 'text-muted-foreground'}`}>{q.status}</td>
+                    </tr>
+                  ))}</tbody></table>
+                )}
               </div>
             )}
 
@@ -818,6 +1180,60 @@ const Index = () => {
               ))}</div>
             ))}
 
+            {/* BREACHES */}
+            {activeTab === 'breaches' && (scanState.darkWebFindings.filter(d => d.type === 'breach').length === 0 ? <Empty msg="No breaches found." /> : (
+              <div>{scanState.darkWebFindings.filter(d => d.type === 'breach').map((d, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-destructive/5 border-destructive/20">
+                  <div className="flex items-center gap-2 mb-1"><SevBadge sev={d.severity} /><span className="font-semibold text-[11px]">{d.title}</span></div>
+                  <div className="text-muted-foreground text-[10px] ml-6">{d.detail}</div>
+                  {d.date && <div className="text-[9px] text-muted-foreground ml-6">Date: {d.date}</div>}
+                </div>
+              ))}</div>
+            ))}
+
+            {/* PASTES */}
+            {activeTab === 'pastes' && ((scanState.pasteFindings || []).length === 0 ? <Empty msg="No paste site mentions found." /> : (
+              <div>{(scanState.pasteFindings || []).map((p, i) => (
+                <div key={i} className="mb-2 p-3 rounded-lg border bg-white/[0.02] border-border">
+                  <div className="flex items-center gap-2 mb-1"><FileText size={12} className="text-primary" /><span className="font-semibold text-[11px]">{p.source}</span></div>
+                  <a href={p.url} target="_blank" rel="noreferrer" className="text-primary text-[10px] ml-6 no-underline hover:underline font-mono">{p.url}</a>
+                  {p.snippet && <div className="text-muted-foreground text-[9px] ml-6 mt-1">{p.snippet.slice(0, 150)}</div>}
+                </div>
+              ))}</div>
+            ))}
+
+            {/* URLSCAN */}
+            {activeTab === 'urlscan' && (scanState.uscan.length === 0 ? <Empty msg="No URLScan data." /> : (
+              <div>{scanState.uscan.map((u: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03]">
+                  <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
+                  <span className="text-secondary-foreground text-[11px] truncate">{u.url || u}</span>
+                </div>
+              ))}</div>
+            ))}
+
+            {/* INTEL */}
+            {activeTab === 'intel' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                  <div className="text-[10px] font-bold text-primary uppercase mb-2">OTX AlienVault</div>
+                  <div className="text-[11px]">Pulses: {scanState.otx.p} | Malware: {scanState.otx.m} | URLs: {scanState.otx.u}</div>
+                </div>
+                <div className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                  <div className="text-[10px] font-bold text-primary uppercase mb-2">CVE Summary</div>
+                  <div className="text-[11px]">{Object.values(scanState.ips).reduce((a: number, v: any) => a + (v.cves?.length || 0), 0)} CVEs across {Object.keys(scanState.ips).length} IPs</div>
+                </div>
+                <div className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                  <div className="text-[10px] font-bold text-primary uppercase mb-2">WAF</div>
+                  <div className="text-[11px]">{scanState.waf !== 'unknown' ? scanState.waf : 'Not detected'}</div>
+                </div>
+                <div className="bg-white/[0.028] border border-border rounded-[14px] p-3">
+                  <div className="text-[10px] font-bold text-primary uppercase mb-2">Technologies</div>
+                  <div className="flex flex-wrap gap-1">{scanState.tech.map((t, i) => <span key={i} className="text-[9px] px-1.5 py-0.5 bg-primary/10 rounded text-primary">{t}</span>)}</div>
+                </div>
+              </div>
+            )}
+
             {/* TECH */}
             {activeTab === 'tech' && (scanState.tech.length === 0 ? <Empty msg="No technologies detected." /> : (
               <div className="flex flex-wrap gap-2">
@@ -831,7 +1247,7 @@ const Index = () => {
                 <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 border-b border-white/[0.03] hover:bg-primary/[0.02] cursor-pointer transition-colors"
                   onClick={async () => {
                     const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
-                    if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); }
+                    if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); toast.success(`Loaded scan for ${data.domain}`); }
                   }}>
                   <Globe size={14} className="text-primary shrink-0" />
                   <span className="text-primary font-semibold text-[12px]">{h.domain}</span>
