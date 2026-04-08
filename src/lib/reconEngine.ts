@@ -2246,13 +2246,109 @@ export async function runFullScan(
     }, onModule, { retries: 1, timeout: 120000 });
   } else onModule('IP Geolocation', 'skip');
 
-  // ── Phase 30: Auth Surface Mapping ──
-  onProgress(96, '🔐 Auth Surface Mapping…');
+  // ── Phase 30: SSL/TLS Certificates ──
+  onProgress(91, '🔒 SSL/TLS Certs…');
+  await safeRun('SSL Certs', async () => {
+    state.ssl = await fetchSSLData(domain);
+    onData({ ssl: [...state.ssl] });
+  }, onModule, { retries: 1, timeout: 30000 });
+
+  // ── Phase 31: Takeover Detection ──
+  onProgress(92, '🏴 Takeover Detection…');
+  await safeRun('Takeover', async () => {
+    // Resolve CNAMEs for subs
+    for (const sub of state.subs.filter(s => s.status === 'resolved').slice(0, 200)) {
+      try {
+        const cnameRecs = await apiDNS(sub.subdomain, 'CNAME');
+        if (cnameRecs.length) sub.cname = cnameRecs[0].data.replace(/\.$/, '');
+      } catch { /* */ }
+    }
+    state.takeover = await detectTakeover(state.subs);
+    onData({ takeover: [...state.takeover], subs: [...state.subs] });
+  }, onModule, { retries: 0, timeout: 120000 });
+
+  // ── Phase 32: Email Security ──
+  onProgress(93, '📧 Email Security…');
+  await safeRun('Email Security', async () => {
+    state.emailFindings = await analyzeEmailSecurity(domain);
+    onData({ emailFindings: [...state.emailFindings] });
+  }, onModule, { retries: 1, timeout: 30000 });
+
+  // ── Phase 33: S3 Buckets ──
+  await safeRun('S3 Buckets', async () => {
+    state.cloud.s3 = await scanS3Buckets(domain);
+    onData({ cloud: { ...state.cloud } });
+  }, onModule, { retries: 0, timeout: 60000 });
+
+  // ── Phase 34: Dorks ──
+  state.dorks = generateDorks(domain);
+  onData({ dorks: [...state.dorks] });
+  onModule('Dork Generator', 'done');
+
+  // ── Phase 35: GitHub Leaks ──
+  onProgress(94, '🐙 GitHub Leaks…');
+  await safeRun('GitHub Leaks', async () => {
+    state.ghLeaks = await searchGitHubLeaks(domain);
+    onData({ ghLeaks: [...state.ghLeaks] });
+  }, onModule, { retries: 0, timeout: 60000 });
+
+  // ── Phase 36: SSTI/SQLi ──
+  onProgress(95, '💉 SSTI/SQLi…');
+  await safeRun('SSTI/SQLi', async () => {
+    state.sstiFindings = await scanSSTI(state.eps);
+    onData({ sstiFindings: [...state.sstiFindings] });
+  }, onModule, { retries: 0, timeout: 120000 });
+
+  // ── Phase 37: VHost Fuzzing ──
+  await safeRun('VHost Fuzz', async () => {
+    state.vhostFindings = await scanVHosts(state.ips, domain);
+    onData({ vhostFindings: [...state.vhostFindings] });
+  }, onModule, { retries: 0, timeout: 60000 });
+
+  // ── Phase 38: Paste Search ──
+  await safeRun('Paste Search', async () => {
+    state.pasteFindings = await searchPastes(domain);
+    onData({ pasteFindings: [...state.pasteFindings] });
+  }, onModule, { retries: 0, timeout: 30000 });
+
+  // ── Phase 39: Favicon Hash ──
+  await safeRun('Favicon Hash', async () => {
+    const fav = await fetchFaviconHash(domain);
+    if (fav) state.faviconHash = fav.hash;
+    onData({ faviconHash: state.faviconHash });
+  }, onModule, { retries: 0, timeout: 10000 });
+
+  // ── Phase 40: Auth Surface Mapping ──
+  onProgress(97, '🔐 Auth Surface Mapping…');
   state.authSurface = mapAuthSurface(state.eps);
   onData({ authSurface: { ...state.authSurface } });
   onModule('Auth Surface', 'done');
 
-  // ── Phase 31: Risk Score ──
+  // ── Phase 41: IP Geolocation — NO LIMIT ──
+  onProgress(98, '🌍 IP Geolocation…');
+  if (sources.geo !== false) {
+    await safeRun('IP Geolocation', async () => {
+      const ips = Object.keys(state.ips);
+      for (let i = 0; i < ips.length; i += 6) {
+        const batch = ips.slice(i, i + 6);
+        await Promise.all(batch.map(async ip => {
+          const g = await fetchGeo(ip);
+          if (g) {
+            state.ips[ip].geo = g;
+            state.ips[ip].cloud = identifyCloudProvider(ip);
+            state.ips[ip].hosts.forEach((h: string) => {
+              const sub = state.subs.find(s => s.subdomain === h);
+              if (sub) sub.geo = `${g.city ? g.city + ', ' : ''}${g.country_code || ''}${g.org ? ' · ' + g.org : ''}`;
+            });
+          }
+        }));
+        await sleep(150);
+      }
+      onData({ subs: [...state.subs], ips: { ...state.ips } });
+    }, onModule, { retries: 1, timeout: 120000 });
+  } else onModule('IP Geolocation', 'skip');
+
+  // ── Phase 42: Risk Score ──
   const { score, grade } = calculateRiskScore(state);
   state.riskScore = score;
   state.riskGrade = grade;
