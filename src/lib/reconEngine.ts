@@ -1346,6 +1346,479 @@ export async function ptrSweep(ips: string[]): Promise<{ ip: string; ptr: string
 }
 
 // ══════════════════════════════════════════
+//  SSL / TLS CERTIFICATE DATA
+// ══════════════════════════════════════════
+
+export interface SSLCert { cn: string; issuer: string; notBefore: string; notAfter: string; daysLeft: number; wildcard: boolean; san: string[]; }
+
+export async function fetchSSLData(domain: string): Promise<SSLCert[]> {
+  const certs: SSLCert[] = [];
+  try {
+    const r = await pFetch(`https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`, 30000);
+    const data = await r.json();
+    if (!Array.isArray(data)) return certs;
+    const seen = new Set<string>();
+    data.slice(0, 500).forEach((e: any) => {
+      const cn = (e.common_name || '').toLowerCase();
+      const key = cn + (e.serial_number || '');
+      if (seen.has(key)) return; seen.add(key);
+      const notBefore = e.not_before || '';
+      const notAfter = e.not_after || '';
+      const daysLeft = notAfter ? Math.ceil((new Date(notAfter).getTime() - Date.now()) / 86400000) : 0;
+      const san = (e.name_value || '').split('\n').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+      certs.push({ cn, issuer: e.issuer_name || '', notBefore, notAfter, daysLeft, wildcard: cn.startsWith('*.'), san });
+    });
+  } catch { /* */ }
+  return certs;
+}
+
+// ══════════════════════════════════════════
+//  SUBDOMAIN TAKEOVER DETECTION
+// ══════════════════════════════════════════
+
+const TAKEOVER_SIGS: { service: string; cnames: string[]; body: string[]; sev: string }[] = [
+  { service: 'GitHub Pages', cnames: ['github.io'], body: ['There isn\'t a GitHub Pages site here'], sev: 'HIGH' },
+  { service: 'Heroku', cnames: ['herokuapp.com', 'herokussl.com'], body: ['no-such-app', 'No such app'], sev: 'HIGH' },
+  { service: 'Shopify', cnames: ['myshopify.com'], body: ['Sorry, this shop is currently unavailable'], sev: 'MEDIUM' },
+  { service: 'Tumblr', cnames: ['domains.tumblr.com'], body: ['There\'s nothing here', 'Whatever you were looking for'], sev: 'MEDIUM' },
+  { service: 'WordPress.com', cnames: ['wordpress.com'], body: ['Do you want to register'], sev: 'MEDIUM' },
+  { service: 'Netlify', cnames: ['netlify.app', 'netlify.com'], body: ['Not Found - Request ID'], sev: 'HIGH' },
+  { service: 'Vercel', cnames: ['vercel.app', 'now.sh'], body: ['404: NOT_FOUND'], sev: 'HIGH' },
+  { service: 'Surge.sh', cnames: ['surge.sh'], body: ['project not found'], sev: 'HIGH' },
+  { service: 'Ghost', cnames: ['ghost.io'], body: ['The thing you were looking for is no longer here'], sev: 'HIGH' },
+  { service: 'Fastly', cnames: ['fastly.net'], body: ['Fastly error: unknown domain'], sev: 'HIGH' },
+  { service: 'Pantheon', cnames: ['pantheonsite.io'], body: ['404 error unknown site'], sev: 'HIGH' },
+  { service: 'Zendesk', cnames: ['zendesk.com'], body: ['Help Center Closed'], sev: 'MEDIUM' },
+  { service: 'Statuspage', cnames: ['statuspage.io'], body: ['Status page launched'], sev: 'MEDIUM' },
+  { service: 'Fly.io', cnames: ['fly.dev', 'edgeapp.net'], body: ['404 Not Found'], sev: 'HIGH' },
+  { service: 'Azure', cnames: ['azurewebsites.net', 'cloudapp.net', 'azure-api.net', 'azurefd.net'], body: ['404 Web Site not found'], sev: 'HIGH' },
+  { service: 'AWS S3', cnames: ['s3.amazonaws.com', 's3-website'], body: ['NoSuchBucket', 'The specified bucket does not exist'], sev: 'CRITICAL' },
+  { service: 'AWS Elastic Beanstalk', cnames: ['elasticbeanstalk.com'], body: ['404 Not Found'], sev: 'HIGH' },
+  { service: 'Bitbucket', cnames: ['bitbucket.io'], body: ['Repository not found'], sev: 'HIGH' },
+  { service: 'Squarespace', cnames: ['squarespace.com'], body: ['No Such Account'], sev: 'MEDIUM' },
+  { service: 'Wix', cnames: ['wixsite.com'], body: ['Error ConnectYourDomain'], sev: 'MEDIUM' },
+  { service: 'Unbounce', cnames: ['unbouncepages.com'], body: ['The requested URL was not found'], sev: 'MEDIUM' },
+  { service: 'Tilda', cnames: ['tilda.ws'], body: ['Please go to the site settings'], sev: 'MEDIUM' },
+  { service: 'Webflow', cnames: ['proxy.webflow.com', 'proxy-ssl.webflow.com'], body: ['The page you are looking for doesn\'t exist'], sev: 'MEDIUM' },
+  { service: 'Render', cnames: ['onrender.com'], body: ['Not Found'], sev: 'HIGH' },
+  { service: 'Railway', cnames: ['up.railway.app'], body: ['Application Not Found'], sev: 'HIGH' },
+  { service: 'Readme.io', cnames: ['readme.io'], body: ['Project not found'], sev: 'MEDIUM' },
+  { service: 'UserVoice', cnames: ['uservoice.com'], body: ['This UserVoice subdomain'], sev: 'MEDIUM' },
+  { service: 'ReadTheDocs', cnames: ['readthedocs.io'], body: ['unknown to Read the Docs'], sev: 'MEDIUM' },
+  { service: 'Koyeb', cnames: ['koyeb.app'], body: ['404'], sev: 'HIGH' },
+];
+
+export interface TakeoverFinding { subdomain: string; cname: string; service: string; sev: string; confirmed: boolean; }
+
+export async function detectTakeover(subs: SubdomainEntry[]): Promise<TakeoverFinding[]> {
+  const findings: TakeoverFinding[] = [];
+  for (const sub of subs) {
+    if (!sub.cname) continue;
+    for (const sig of TAKEOVER_SIGS) {
+      if (sig.cnames.some(c => sub.cname.includes(c))) {
+        let confirmed = false;
+        try {
+          const r = await sf(`https://${sub.subdomain}`, {}, 5000);
+          const body = await r.text();
+          confirmed = sig.body.some(b => body.includes(b));
+        } catch { /* */ }
+        findings.push({ subdomain: sub.subdomain, cname: sub.cname, service: sig.service, sev: confirmed ? sig.sev : 'LOW', confirmed });
+        break;
+      }
+    }
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  EMAIL SECURITY ANALYSIS
+// ══════════════════════════════════════════
+
+export interface EmailSecFinding { type: string; record: string; status: string; sev: string; detail: string; }
+
+export async function analyzeEmailSecurity(domain: string): Promise<EmailSecFinding[]> {
+  const findings: EmailSecFinding[] = [];
+  // SPF
+  const txt = await apiDNS(domain, 'TXT');
+  const spf = txt.find(r => r.data.startsWith('v=spf1'));
+  if (spf) {
+    const hasAll = spf.data.includes('-all');
+    findings.push({ type: 'SPF', record: spf.data, status: hasAll ? 'Strict' : 'Permissive', sev: hasAll ? 'LOW' : 'MEDIUM', detail: hasAll ? 'SPF with -all (strict)' : 'SPF without strict -all — spoofing possible' });
+  } else {
+    findings.push({ type: 'SPF', record: '', status: 'Missing', sev: 'CRITICAL', detail: 'No SPF record — email spoofing fully possible' });
+  }
+  // DMARC
+  const dmarc = await apiDNS(`_dmarc.${domain}`, 'TXT');
+  const dmarcRec = dmarc.find(r => r.data.includes('v=DMARC1'));
+  if (dmarcRec) {
+    const policy = (dmarcRec.data.match(/p=(\w+)/) || [])[1] || 'none';
+    findings.push({ type: 'DMARC', record: dmarcRec.data, status: policy, sev: policy === 'reject' ? 'LOW' : policy === 'quarantine' ? 'MEDIUM' : 'HIGH', detail: `DMARC policy: ${policy}` });
+  } else {
+    findings.push({ type: 'DMARC', record: '', status: 'Missing', sev: 'HIGH', detail: 'No DMARC record' });
+  }
+  // DKIM common selectors
+  const dkimSelectors = ['default', 'google', 'selector1', 'selector2', 'mail', 'dkim', 'smtp', 'sendgrid', 'mailchimp', 'mandrill', 'protonmail', 'zoho', 'mimecast', 'amazonses', 'k1', 's1', 's2', 'mg'];
+  for (const sel of dkimSelectors) {
+    const dk = await apiDNS(`${sel}._domainkey.${domain}`, 'TXT');
+    if (dk.length > 0) { findings.push({ type: 'DKIM', record: dk[0].data.slice(0, 80) + '…', status: `Found (${sel})`, sev: 'LOW', detail: `DKIM selector: ${sel}` }); break; }
+  }
+  // MTA-STS
+  const mtasts = await apiDNS(`_mta-sts.${domain}`, 'TXT');
+  if (mtasts.length) findings.push({ type: 'MTA-STS', record: mtasts[0].data, status: 'Present', sev: 'LOW', detail: 'MTA-STS enabled' });
+  // BIMI
+  const bimi = await apiDNS(`default._bimi.${domain}`, 'TXT');
+  if (bimi.length) findings.push({ type: 'BIMI', record: bimi[0].data, status: 'Present', sev: 'LOW', detail: 'BIMI record found' });
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  S3 BUCKET ENUMERATION
+// ══════════════════════════════════════════
+
+export interface S3Finding { bucket: string; url: string; status: string; sev: string; files: string[]; }
+
+export async function scanS3Buckets(domain: string): Promise<S3Finding[]> {
+  const findings: S3Finding[] = [];
+  const base = domain.replace(/\.\w+$/, '');
+  const perms = [base, `${base}-dev`, `${base}-staging`, `${base}-prod`, `${base}-backup`, `${base}-static`, `${base}-cdn`, `${base}-assets`, `${base}-media`, `${base}-uploads`, `${base}-data`, `${base}-logs`, `${base}-test`, `${base}-private`, `${base}-public`, `${base}-images`, `${base}-files`, `${base}-storage`];
+  for (const name of perms) {
+    try {
+      const r = await sf(`https://${name}.s3.amazonaws.com/`, {}, 5000);
+      if (r.status === 200) {
+        const text = await r.text();
+        const keys = (text.match(/<Key>([^<]+)<\/Key>/g) || []).map(m => (m.match(/<Key>([^<]+)/) || [])[1] || '').filter(Boolean).slice(0, 20);
+        findings.push({ bucket: name, url: `https://${name}.s3.amazonaws.com`, status: 'PUBLIC', sev: 'CRITICAL', files: keys });
+      } else if (r.status === 403) {
+        findings.push({ bucket: name, url: `https://${name}.s3.amazonaws.com`, status: 'EXISTS (Private)', sev: 'LOW', files: [] });
+      }
+    } catch { /* */ }
+    await sleep(100);
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  GOOGLE DORK GENERATION
+// ══════════════════════════════════════════
+
+export interface DorkEntry { category: string; query: string; url: string; }
+
+export function generateDorks(domain: string): DorkEntry[] {
+  const d = domain;
+  const dorks: DorkEntry[] = [];
+  const add = (cat: string, q: string, engine = 'google') => {
+    const url = engine === 'google' ? `https://www.google.com/search?q=${encodeURIComponent(q)}` :
+      engine === 'github' ? `https://github.com/search?q=${encodeURIComponent(q)}&type=code` :
+      engine === 'shodan' ? `https://www.shodan.io/search?query=${encodeURIComponent(q)}` :
+      `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+    dorks.push({ category: cat, query: q, url });
+  };
+  // Admin & Login
+  add('Admin', `site:${d} inurl:admin`);
+  add('Admin', `site:${d} inurl:login`);
+  add('Admin', `site:${d} inurl:dashboard`);
+  add('Admin', `site:${d} inurl:panel`);
+  add('Admin', `site:${d} intitle:"admin" OR intitle:"login"`);
+  add('Admin', `site:${d} inurl:wp-admin`);
+  add('Admin', `site:${d} inurl:cpanel`);
+  // Sensitive Files
+  add('Files', `site:${d} ext:sql | ext:env | ext:log | ext:bak`);
+  add('Files', `site:${d} ext:xml | ext:json | ext:yml | ext:yaml`);
+  add('Files', `site:${d} ext:conf | ext:cfg | ext:ini`);
+  add('Files', `site:${d} ext:pem | ext:key | ext:crt`);
+  add('Files', `site:${d} filetype:pdf | filetype:doc | filetype:xls`);
+  add('Files', `site:${d} inurl:backup | inurl:dump | inurl:export`);
+  // API & Endpoints
+  add('API', `site:${d} inurl:api`);
+  add('API', `site:${d} inurl:swagger | inurl:api-docs`);
+  add('API', `site:${d} inurl:graphql | inurl:graphiql`);
+  add('API', `site:${d} inurl:rest | inurl:v1 | inurl:v2`);
+  add('API', `site:${d} inurl:webhook`);
+  // Errors & Debug
+  add('Debug', `site:${d} "debug" | "stacktrace" | "traceback"`);
+  add('Debug', `site:${d} "error" | "exception" | "fatal"`);
+  add('Debug', `site:${d} inurl:debug | inurl:trace | inurl:phpinfo`);
+  // Credentials
+  add('Creds', `site:${d} "password" | "passwd" | "secret_key"`);
+  add('Creds', `site:${d} "api_key" | "apikey" | "access_token"`);
+  add('Creds', `site:${d} "aws_secret" | "aws_access_key"`);
+  // Cloud
+  add('Cloud', `site:s3.amazonaws.com "${d}"`);
+  add('Cloud', `site:blob.core.windows.net "${d}"`);
+  add('Cloud', `site:storage.googleapis.com "${d}"`);
+  add('Cloud', `site:pastebin.com "${d}"`);
+  add('Cloud', `site:trello.com "${d}"`);
+  // Bug Bounty
+  add('BugBounty', `site:${d} inurl:reset_password`);
+  add('BugBounty', `site:${d} inurl:token | inurl:csrf`);
+  add('BugBounty', `site:${d} inurl:redirect | inurl:return | inurl:next`);
+  add('BugBounty', `site:${d} inurl:upload | inurl:file`);
+  // GitHub
+  add('GitHub', `"${d}" password`, 'github');
+  add('GitHub', `"${d}" api_key`, 'github');
+  add('GitHub', `"${d}" secret`, 'github');
+  add('GitHub', `"${d}" DATABASE_URL`, 'github');
+  add('GitHub', `"${d}" AWS_SECRET`, 'github');
+  add('GitHub', `"${d}" private_key`, 'github');
+  // Shodan
+  add('Shodan', `hostname:${d}`, 'shodan');
+  add('Shodan', `ssl:"${d}"`, 'shodan');
+  add('Shodan', `org:"${d.split('.')[0]}"`, 'shodan');
+  // Subdomains
+  add('Subs', `site:*.${d} -www`);
+  add('Subs', `site:${d} -www -inurl:www`);
+  return dorks;
+}
+
+// ══════════════════════════════════════════
+//  GITHUB CODE LEAKS
+// ══════════════════════════════════════════
+
+export interface GHLeakFinding { repo: string; file: string; url: string; keyword: string; }
+
+export async function searchGitHubLeaks(domain: string): Promise<GHLeakFinding[]> {
+  const findings: GHLeakFinding[] = [];
+  const keywords = ['password', 'secret', 'api_key', 'token', 'DATABASE_URL', 'AWS_SECRET', 'private_key', '.env', 'credentials', 'authorization', 'bearer', 'smtp'];
+  for (const kw of keywords) {
+    try {
+      const r = await pFetch(`https://api.github.com/search/code?q="${encodeURIComponent(domain)}"+${encodeURIComponent(kw)}&per_page=10`, 10000);
+      if (!r.ok) continue;
+      const d = await r.json();
+      (d.items || []).forEach((item: any) => {
+        findings.push({ repo: item.repository?.full_name || '', file: item.path || '', url: item.html_url || '', keyword: kw });
+      });
+      await sleep(2000); // GitHub rate limit
+    } catch { break; }
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  SSTI / SQLi ACTIVE TESTING
+// ══════════════════════════════════════════
+
+export interface SSTIFinding { url: string; param: string; type: string; payload: string; sev: string; evidence: string; }
+
+export async function scanSSTI(eps: EndpointEntry[]): Promise<SSTIFinding[]> {
+  const findings: SSTIFinding[] = [];
+  const payloads = [
+    { type: 'SSTI/Jinja2', payload: '{{7*7}}', check: '49' },
+    { type: 'SSTI/FreeMarker', payload: '${7*7}', check: '49' },
+    { type: 'SQLi', payload: "' OR '1'='1", check: /sql|syntax|mysql|oracle|postgres|ORA-|error in your SQL/i },
+    { type: 'SQLi', payload: "1' AND 1=1--", check: /sql|syntax|mysql|error/i },
+  ];
+  const candidates = eps.filter(ep => { try { return new URL(ep.url).searchParams.size > 0; } catch { return false; } }).slice(0, 200);
+  for (const ep of candidates) {
+    try {
+      const u = new URL(ep.url);
+      const firstParam = Array.from(u.searchParams.entries())[0];
+      if (!firstParam) continue;
+      for (const p of payloads) {
+        const tu = new URL(ep.url); tu.searchParams.set(firstParam[0], p.payload);
+        try {
+          const r = await sf(tu.toString(), {}, 5000);
+          const body = await r.text();
+          const matched = typeof p.check === 'string' ? body.includes(p.check) : p.check.test(body);
+          if (matched) {
+            findings.push({ url: ep.url, param: firstParam[0], type: p.type, payload: p.payload, sev: 'CRITICAL', evidence: body.slice(0, 200) });
+            break;
+          }
+        } catch { /* */ }
+        await sleep(50);
+      }
+    } catch { /* */ }
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  VIRTUAL HOST FUZZING
+// ══════════════════════════════════════════
+
+export interface VHostFinding { ip: string; vhost: string; status: number; size: number; sev: string; }
+
+export async function scanVHosts(ips: Record<string, any>, domain: string): Promise<VHostFinding[]> {
+  const findings: VHostFinding[] = [];
+  const prefixes = ['admin', 'internal', 'corp', 'intranet', 'dev', 'staging', 'test', 'beta', 'api', 'portal', 'mail', 'vpn', 'app', 'dashboard', 'secure', 'private', 'hidden'];
+  const ipList = Object.keys(ips).slice(0, 10);
+  // Get baseline
+  for (const ip of ipList) {
+    let baselineSize = 0;
+    try { const br = await sf(`http://${ip}`, { headers: { 'Host': domain } }, 3000); baselineSize = (await br.text()).length; } catch { continue; }
+    for (const pfx of prefixes) {
+      const vhost = `${pfx}.${domain}`;
+      try {
+        const r = await sf(`http://${ip}`, { headers: { 'Host': vhost } }, 3000);
+        const body = await r.text();
+        if (r.status === 200 && Math.abs(body.length - baselineSize) > 100) {
+          findings.push({ ip, vhost, status: r.status, size: body.length, sev: 'HIGH' });
+        }
+      } catch { /* */ }
+    }
+    await sleep(100);
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  PASTE SITE SEARCH
+// ══════════════════════════════════════════
+
+export interface PasteFinding { source: string; url: string; title: string; snippet: string; }
+
+export async function searchPastes(domain: string): Promise<PasteFinding[]> {
+  const findings: PasteFinding[] = [];
+  try {
+    const r = await pFetch(`https://psbdmp.ws/api/v3/search/${encodeURIComponent(domain)}`, 15000);
+    const d = await r.json();
+    if (Array.isArray(d)) {
+      d.slice(0, 50).forEach((p: any) => {
+        findings.push({ source: 'Pastebin', url: `https://pastebin.com/${p.id}`, title: p.tags || 'Untitled', snippet: (p.content || '').slice(0, 200) });
+      });
+    }
+  } catch { /* */ }
+  // DuckDuckGo search
+  try {
+    const r = await pFetch(`https://html.duckduckgo.com/html/?q=site:pastebin.com+%22${encodeURIComponent(domain)}%22`, 10000);
+    const html = await r.text();
+    const links = html.match(/href="(https:\/\/pastebin\.com\/\w+)"/g) || [];
+    links.slice(0, 10).forEach(m => {
+      const url = (m.match(/href="([^"]+)"/) || [])[1] || '';
+      if (url && !findings.find(f => f.url === url)) {
+        findings.push({ source: 'Pastebin/DDG', url, title: 'Paste mention', snippet: '' });
+      }
+    });
+  } catch { /* */ }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  FAVICON HASH
+// ══════════════════════════════════════════
+
+export async function fetchFaviconHash(domain: string): Promise<{ hash: string; shodanUrl: string } | null> {
+  try {
+    const r = await pFetch(`https://${domain}/favicon.ico`, 8000);
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    // MurmurHash3
+    let hash = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      hash = Math.imul(hash ^ bytes[i], 0x5bd1e995);
+      hash ^= hash >>> 13;
+    }
+    const hashStr = String(hash);
+    return { hash: hashStr, shodanUrl: `https://www.shodan.io/search?query=http.favicon.hash:${hashStr}` };
+  } catch { return null; }
+}
+
+// ══════════════════════════════════════════
+//  ADDITIONAL SUBDOMAIN SOURCES (50+)
+// ══════════════════════════════════════════
+
+export async function fetchDNSRepo(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://dnsrepo.noc.org/?search=${domain}`, 15000);
+    const html = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'DNSRepo' }); }
+    }
+  } catch { /* */ }
+  return out;
+}
+
+export async function fetchRiddler(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://riddler.io/search/exportcsv?q=pld:${domain}`, 15000);
+    const text = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'Riddler' }); }
+    }
+  } catch { /* */ }
+  return out;
+}
+
+export async function fetchWebArchiveFull(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey&limit=1000000`, 60000);
+    const text = await r.text();
+    text.trim().split('\n').forEach(u => {
+      try {
+        const h = new URL(u.trim()).hostname.toLowerCase().replace(/^\*\./, '');
+        if (h && isValidSub(h, domain) && !seen.has(h)) { seen.add(h); out.push({ subdomain: h, ip: '', source: 'Wayback Full' }); }
+      } catch { /* */ }
+    });
+  } catch { /* */ }
+  return out;
+}
+
+export async function fetchGAU(domain: string): Promise<EndpointEntry[]> {
+  const all: EndpointEntry[] = [];
+  const seen = new Set<string>();
+  try {
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=100000`, 60000);
+    const text = await r.text();
+    if (text.startsWith('[')) {
+      const data = JSON.parse(text);
+      for (let i = 1; i < data.length && all.length < 1000000; i++) {
+        const u = normUrl(data[i][0]);
+        if (!u || isJunkUrl(u) || JUNK.test(u)) continue;
+        const k = urlKey(u);
+        if (seen.has(k)) continue; seen.add(k);
+        all.push({ url: u, status: data[i][1] || '-', source: 'GAU' });
+      }
+    }
+  } catch { /* */ }
+  return all;
+}
+
+export async function fetchGitHubEndpoints(domain: string): Promise<EndpointEntry[]> {
+  const all: EndpointEntry[] = [];
+  try {
+    const r = await pFetch(`https://api.github.com/search/code?q="${encodeURIComponent(domain)}"&per_page=30`, 12000);
+    if (!r.ok) return all;
+    const d = await r.json();
+    (d.items || []).forEach((item: any) => {
+      if (item.html_url) all.push({ url: item.html_url, status: '-', source: 'GitHub' });
+    });
+  } catch { /* */ }
+  return all;
+}
+
+// ── DNSx Multi-Query (multi-resolver extended) ──
+export async function dnsxMultiQuery(domain: string): Promise<{ subdomain: string; ip: string; source: string }[]> {
+  const out: any[] = [];
+  const seen = new Set<string>();
+  // Query multiple resolvers for wildcard detection
+  const resolvers = ['https://dns.google/resolve', 'https://cloudflare-dns.com/dns-query', 'https://dns.quad9.net/dns-query'];
+  const types = ['A', 'AAAA', 'CNAME', 'NS', 'MX'];
+  for (const type of types) {
+    for (const resolver of resolvers) {
+      try {
+        const r = await sf(`${resolver}?name=${encodeURIComponent(domain)}&type=${type}`, { headers: { 'Accept': 'application/dns-json' } }, 5000);
+        if (!r.ok) continue;
+        const d = await r.json();
+        (d.Answer || []).forEach((a: any) => {
+          const host = (a.name || '').toLowerCase().replace(/\.$/, '');
+          if (host && isValidSub(host, domain) && !seen.has(host)) { seen.add(host); out.push({ subdomain: host, ip: a.data || '', source: 'DNSx' }); }
+        });
+      } catch { /* */ }
+    }
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════
 //  FULL SCAN ORCHESTRATOR — NO LIMITS
 // ══════════════════════════════════════════
 
