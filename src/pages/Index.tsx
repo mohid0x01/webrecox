@@ -145,7 +145,40 @@ const Index = () => {
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
-  useEffect(() => { loadHistory(); }, []);
+  // Load shared scan from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('share');
+    if (sid) {
+      setShareId(sid);
+      (async () => {
+        const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', sid).maybeSingle();
+        if (data?.scan_data) {
+          setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState);
+          setTarget(data.domain || '');
+          toast.success(`Loaded shared scan for ${data.domain}`);
+        } else toast.error('Shared scan not found');
+      })();
+    }
+    loadHistory();
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); startScan(); }
+      if (e.ctrlKey && e.key === 'e') { e.preventDefault(); handleExport('json'); }
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && e.target === document.body) {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= 9) {
+          const tabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
+          if (tabs[num - 1]) setActiveTab(tabs[num - 1].id);
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [target, scanning, activeCat]);
 
   // Sound effects on module status changes
   useEffect(() => {
