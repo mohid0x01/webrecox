@@ -1138,12 +1138,12 @@ const Index = () => {
               ))}</div>
             ))}
 
-            {/* HEATMAP */}
+            {/* HEATMAP — NO LIMIT */}
             {activeTab === 'heatmap' && (scanState.subs.length === 0 ? <Empty msg="Run a scan to see heatmap." /> : (
               <div>
-                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of subdomains (0–100)</div>
+                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of ALL {scanState.subs.length} subdomains (0–100)</div>
                 <div className="flex flex-wrap gap-1">
-                  {scanState.subs.slice(0, 500).map((s, i) => {
+                  {scanState.subs.map((s, i) => {
                     let score = 0;
                     if (s.tko) score += 40;
                     if (s.ports.some(p => [3306,5432,27017,6379,9200,3389].includes(p))) score += 30;
@@ -1154,11 +1154,56 @@ const Index = () => {
                   })}
                 </div>
                 <div className="mt-3 flex gap-3 text-[9px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70 Critical</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40 High</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20 Medium</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20 Low</span>
                 </div>
+              </div>
+            ))}
+
+            {/* THREAT MAP */}
+            {activeTab === 'threatmap' && (Object.keys(scanState.ips).length === 0 ? <Empty msg="Run a scan to see threat map." /> : (
+              <Suspense fallback={<div className="text-center py-10 text-muted-foreground">Loading map…</div>}>
+                <ThreatMap ips={scanState.ips} />
+              </Suspense>
+            ))}
+
+            {/* JS CODE ANALYZER */}
+            {activeTab === 'jsanalyzer' && ((scanState.jsCodeFindings?.length || 0) === 0 ? <Empty msg="No JS code analysis findings." /> : (
+              <div>
+                {/* Summary */}
+                <div className="mb-4 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <div className="text-[11px] font-semibold text-primary mb-2">JS Code Analysis Summary</div>
+                  <div className="grid grid-cols-4 gap-2 text-[10px]">
+                    <div><span className="text-muted-foreground">Endpoints:</span> <span className="text-[hsl(var(--teal))]">{scanState.jsCodeFindings.filter(f => f.category === 'endpoint').length}</span></div>
+                    <div><span className="text-muted-foreground">Bugs:</span> <span className="text-destructive">{scanState.jsCodeFindings.filter(f => f.category === 'bug').length}</span></div>
+                    <div><span className="text-muted-foreground">Secrets:</span> <span className="text-primary">{scanState.jsCodeFindings.filter(f => f.category === 'secret').length}</span></div>
+                    <div><span className="text-muted-foreground">Info:</span> <span className="text-muted-foreground">{scanState.jsCodeFindings.filter(f => f.category === 'info').length}</span></div>
+                  </div>
+                </div>
+                {/* Filter by category */}
+                {['bug', 'endpoint', 'secret', 'info'].map(cat => {
+                  const items = scanState.jsCodeFindings.filter(f => f.category === cat);
+                  if (!items.length) return null;
+                  return (
+                    <div key={cat} className="mb-4">
+                      <h3 className="text-[11px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: cat === 'bug' ? 'hsl(0,72%,60%)' : cat === 'endpoint' ? 'hsl(var(--teal))' : cat === 'secret' ? 'hsl(var(--amber))' : 'hsl(var(--muted-foreground))' }}>
+                        {cat === 'bug' ? '🐛 Security Bugs' : cat === 'endpoint' ? '🔗 Extracted Endpoints' : cat === 'secret' ? '🔑 Secrets' : 'ℹ️ Info'} ({items.length})
+                      </h3>
+                      {items.filter(f => !filter || f.match.toLowerCase().includes(filter.toLowerCase()) || f.file.toLowerCase().includes(filter.toLowerCase())).map((f, i) => (
+                        <div key={i} className="mb-1.5 p-2.5 rounded-lg border bg-white/[0.02] border-border hover:border-primary/20 transition-colors">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <SevBadge sev={f.sev} />
+                            <span className="font-semibold text-[10px]">{f.type}</span>
+                          </div>
+                          <div className="text-primary text-[10px] font-mono ml-6 break-all">{f.match}</div>
+                          <div className="text-muted-foreground text-[8px] ml-6 truncate">File: {f.file}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             ))}
 
