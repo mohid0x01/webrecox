@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks, Mail, Cloud, BookOpen, History, Hash, ChevronRight, Volume2, Bell, MapPin, BarChart3, GitCompare, List } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks, Mail, Cloud, BookOpen, History, Hash, ChevronRight, Volume2, Bell, MapPin, BarChart3, GitCompare, List, Share2, Keyboard, Microscope } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportCSV, exportJSON, exportTXT, exportPDF } from '@/lib/exportUtils';
 import { toast } from 'sonner';
@@ -8,60 +8,63 @@ import {
   generateMarkdownReport, generateBurpXML, generateNucleiTargets,
 } from '@/lib/reconEngine';
 import { playScanStart, playScanComplete, playModuleDone, playModuleError, playAlert, playFindingCritical } from '@/lib/soundUtils';
+const ThreatMap = lazy(() => import('@/components/ThreatMap'));
 
 // ── All tabs ──
 const ALL_TABS = [
   { id: 'sub', label: 'Subs', icon: Globe, cat: 'subdomains' },
   { id: 'dns', label: 'DNS', icon: Radar, cat: 'subdomains' },
   { id: 'ports', label: 'Ports', icon: Wifi, cat: 'subdomains' },
+  { id: 'probe', label: 'Probe', icon: Activity, cat: 'subdomains' },
+  { id: 'ips', label: 'Unique IPs', icon: MapPin, cat: 'subdomains' },
   { id: 'ep', label: 'Endpoints', icon: Link, cat: 'endpoints' },
   { id: 'js', label: 'JS', icon: FileCode, cat: 'js' },
   { id: 'params', label: 'Params', icon: Key, cat: 'endpoints' },
+  { id: 'secrets', label: 'Secrets', icon: Lock, cat: 'js' },
+  { id: 'jsanalyzer', label: 'JS Analyzer', icon: Microscope, cat: 'js' },
+  { id: 'domxss', label: 'DOM XSS', icon: Code, cat: 'js' },
+  { id: 'jwt', label: 'JWT', icon: Key, cat: 'js' },
   { id: 'hdrs', label: 'Headers', icon: Shield, cat: 'intel' },
   { id: 'ssl', label: 'SSL', icon: Lock, cat: 'intel' },
   { id: 'whois', label: 'WHOIS', icon: Server, cat: 'intel' },
-  { id: 'takeover', label: 'Takeover', icon: AlertTriangle, cat: 'vulns' },
-  { id: 'urlscan', label: 'URLScan', icon: Search, cat: 'intel' },
-  { id: 'intel', label: 'Intel', icon: Eye, cat: 'intel' },
-  { id: 'dorks', label: 'Dorks', icon: BookOpen, cat: 'intel' },
-  { id: 'email', label: 'Email', icon: Mail, cat: 'intel' },
-  { id: 'cloud', label: 'Cloud', icon: Cloud, cat: 'intel' },
-  { id: 'ips', label: 'Unique IPs', icon: MapPin, cat: 'subdomains' },
-  { id: 'probe', label: 'Probe', icon: Activity, cat: 'subdomains' },
-  { id: 'adv', label: 'Adv', icon: Zap, cat: 'reports' },
-  { id: 'history', label: 'History', icon: History, cat: 'reports' },
-  { id: 'secrets', label: 'Secrets', icon: Lock, cat: 'js' },
+  { id: 'tech', label: 'Tech', icon: Cpu, cat: 'intel' },
   { id: 'vuln', label: 'Vulns', icon: Bug, cat: 'vulns' },
   { id: 'cors', label: 'CORS', icon: Crosshair, cat: 'vulns' },
   { id: 'nuclei', label: 'Nuclei', icon: Skull, cat: 'vulns' },
   { id: 'content', label: 'Content', icon: Layers, cat: 'vulns' },
-  { id: 'ghleaks', label: 'GH Leaks', icon: Code, cat: 'intel' },
-  { id: 'authmap', label: 'AuthMap', icon: Fingerprint, cat: 'intel' },
-  { id: 'certmine', label: 'Cert Mine', icon: Lock, cat: 'intel' },
-  { id: 'domxss', label: 'DOM XSS', icon: Code, cat: 'js' },
-  { id: 'cookies', label: 'Cookies', icon: Cookie, cat: 'vulns' },
-  { id: 'graphql', label: 'GraphQL', icon: Database, cat: 'vulns' },
-  { id: 'methods', label: 'Methods', icon: ListChecks, cat: 'vulns' },
-  { id: 'vhosts', label: 'VHosts', icon: Server, cat: 'vulns' },
-  { id: 'ssti', label: 'SSTI/SQLi', icon: Terminal, cat: 'vulns' },
-  { id: 'jwt', label: 'JWT', icon: Key, cat: 'js' },
-  { id: 'blh', label: 'BLH', icon: GitBranch, cat: 'vulns' },
-  { id: 'depconf', label: 'Dep Conf', icon: Package, cat: 'vulns' },
-  { id: 'bounty', label: 'Bounty', icon: Award, cat: 'intel' },
-  { id: 'heatmap', label: 'Heatmap', icon: BarChart3, cat: 'reports' },
-  { id: 'risk', label: 'Score', icon: Gauge, cat: 'reports' },
-  { id: 'diff', label: 'Diff', icon: GitCompare, cat: 'reports' },
-  { id: 'queue', label: 'Queue', icon: List, cat: 'reports' },
-  { id: 'darkweb', label: 'Dark Web', icon: Eye, cat: 'intel' },
-  { id: 'breaches', label: 'Breaches', icon: AlertTriangle, cat: 'intel' },
-  { id: 'pastes', label: 'Pastes', icon: FileText, cat: 'intel' },
-  { id: 'exploits', label: 'Exploits', icon: Hammer, cat: 'vulns' },
+  { id: 'takeover', label: 'Takeover', icon: AlertTriangle, cat: 'vulns' },
   { id: 'idor', label: 'IDOR', icon: Fingerprint, cat: 'vulns' },
   { id: 'race', label: 'Race', icon: RefreshCw, cat: 'vulns' },
   { id: 'cache', label: 'Cache Poison', icon: Box, cat: 'vulns' },
   { id: 'crlf', label: 'CRLF', icon: Terminal, cat: 'vulns' },
   { id: 'hostinj', label: 'Host Inj', icon: Network, cat: 'vulns' },
-  { id: 'tech', label: 'Tech', icon: Cpu, cat: 'intel' },
+  { id: 'cookies', label: 'Cookies', icon: Cookie, cat: 'vulns' },
+  { id: 'graphql', label: 'GraphQL', icon: Database, cat: 'vulns' },
+  { id: 'methods', label: 'Methods', icon: ListChecks, cat: 'vulns' },
+  { id: 'vhosts', label: 'VHosts', icon: Server, cat: 'vulns' },
+  { id: 'ssti', label: 'SSTI/SQLi', icon: Terminal, cat: 'vulns' },
+  { id: 'blh', label: 'BLH', icon: GitBranch, cat: 'vulns' },
+  { id: 'depconf', label: 'Dep Conf', icon: Package, cat: 'vulns' },
+  { id: 'urlscan', label: 'URLScan', icon: Search, cat: 'intel' },
+  { id: 'intel', label: 'Intel', icon: Eye, cat: 'intel' },
+  { id: 'dorks', label: 'Dorks', icon: BookOpen, cat: 'intel' },
+  { id: 'email', label: 'Email', icon: Mail, cat: 'intel' },
+  { id: 'cloud', label: 'Cloud', icon: Cloud, cat: 'intel' },
+  { id: 'ghleaks', label: 'GH Leaks', icon: Code, cat: 'intel' },
+  { id: 'authmap', label: 'AuthMap', icon: Fingerprint, cat: 'intel' },
+  { id: 'certmine', label: 'Cert Mine', icon: Lock, cat: 'intel' },
+  { id: 'bounty', label: 'Bounty', icon: Award, cat: 'intel' },
+  { id: 'darkweb', label: 'Dark Web', icon: Eye, cat: 'intel' },
+  { id: 'breaches', label: 'Breaches', icon: AlertTriangle, cat: 'intel' },
+  { id: 'pastes', label: 'Pastes', icon: FileText, cat: 'intel' },
+  { id: 'exploits', label: 'Exploits', icon: Hammer, cat: 'vulns' },
+  { id: 'threatmap', label: 'Map', icon: MapPin, cat: 'reports' },
+  { id: 'heatmap', label: 'Heatmap', icon: BarChart3, cat: 'reports' },
+  { id: 'risk', label: 'Score', icon: Gauge, cat: 'reports' },
+  { id: 'adv', label: 'Adv', icon: Zap, cat: 'reports' },
+  { id: 'history', label: 'History', icon: History, cat: 'reports' },
+  { id: 'diff', label: 'Diff', icon: GitCompare, cat: 'reports' },
+  { id: 'queue', label: 'Queue', icon: List, cat: 'reports' },
 ] as const;
 
 type TabId = typeof ALL_TABS[number]['id'];
@@ -138,10 +141,44 @@ const Index = () => {
   const [filter, setFilter] = useState('');
   const [queueDomains, setQueueDomains] = useState('');
   const [queueStatus, setQueueStatus] = useState<{ domain: string; status: string }[]>([]);
+  const [shareId, setShareId] = useState<string | null>(null);
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
-  useEffect(() => { loadHistory(); }, []);
+  // Load shared scan from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('share');
+    if (sid) {
+      setShareId(sid);
+      (async () => {
+        const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', sid).maybeSingle();
+        if (data?.scan_data) {
+          setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState);
+          setTarget(data.domain || '');
+          toast.success(`Loaded shared scan for ${data.domain}`);
+        } else toast.error('Shared scan not found');
+      })();
+    }
+    loadHistory();
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); startScan(); }
+      if (e.ctrlKey && e.key === 'e') { e.preventDefault(); handleExport('json'); }
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && e.target === document.body) {
+        const num = parseInt(e.key);
+        if (num >= 1 && num <= 9) {
+          const tabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
+          if (tabs[num - 1]) setActiveTab(tabs[num - 1].id);
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [target, scanning, activeCat]);
 
   // Sound effects on module status changes
   useEffect(() => {
@@ -262,6 +299,16 @@ const Index = () => {
 
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!', { duration: 1000 }); };
 
+  const shareScan = async () => {
+    if (!scanState.domain) { toast.error('No scan to share'); return; }
+    const { data } = await supabase.from('scan_results').select('id').eq('domain', scanState.domain.toLowerCase()).order('created_at', { ascending: false }).limit(1);
+    if (data?.[0]) {
+      const url = `${window.location.origin}/?share=${data[0].id}`;
+      navigator.clipboard.writeText(url);
+      toast.success('Share link copied! Recipients will see full results.', { duration: 5000 });
+    } else toast.error('Save a scan first');
+  };
+
   const filteredTabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
 
   const counts: Record<string, number> = {
@@ -316,6 +363,8 @@ const Index = () => {
     queue: queueStatus.length,
     hdrs: scanState.hdrs.length,
     whois: Object.keys(scanState.whois || {}).length > 0 ? 1 : 0,
+    jsanalyzer: scanState.jsCodeFindings?.length || 0,
+    threatmap: Object.keys(scanState.ips).length,
   };
 
   const toggleModule = (name: string) => {
@@ -352,6 +401,9 @@ const Index = () => {
                 {label}
               </button>
             ))}
+            <button onClick={shareScan} className="px-2.5 py-1.5 border border-[hsl(var(--green))]/20 bg-[hsl(var(--green))]/5 rounded-lg text-[10px] font-semibold text-[hsl(var(--green))] hover:bg-[hsl(var(--green))]/10 transition-all cursor-pointer flex items-center gap-1">
+              <Share2 size={10} /> Share
+            </button>
             <a href="/oneliners" className="px-3 py-1.5 border border-[hsl(var(--purple))]/20 bg-[hsl(var(--purple))]/5 rounded-lg text-[10.5px] font-semibold text-[hsl(var(--purple))] hover:bg-[hsl(var(--purple))]/10 transition-colors no-underline">
               ⚡ Oneliners
             </a>
@@ -1086,12 +1138,12 @@ const Index = () => {
               ))}</div>
             ))}
 
-            {/* HEATMAP */}
+            {/* HEATMAP — NO LIMIT */}
             {activeTab === 'heatmap' && (scanState.subs.length === 0 ? <Empty msg="Run a scan to see heatmap." /> : (
               <div>
-                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of subdomains (0–100)</div>
+                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of ALL {scanState.subs.length} subdomains (0–100)</div>
                 <div className="flex flex-wrap gap-1">
-                  {scanState.subs.slice(0, 500).map((s, i) => {
+                  {scanState.subs.map((s, i) => {
                     let score = 0;
                     if (s.tko) score += 40;
                     if (s.ports.some(p => [3306,5432,27017,6379,9200,3389].includes(p))) score += 30;
@@ -1102,11 +1154,56 @@ const Index = () => {
                   })}
                 </div>
                 <div className="mt-3 flex gap-3 text-[9px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70 Critical</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40 High</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20 Medium</span>
+                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20 Low</span>
                 </div>
+              </div>
+            ))}
+
+            {/* THREAT MAP */}
+            {activeTab === 'threatmap' && (Object.keys(scanState.ips).length === 0 ? <Empty msg="Run a scan to see threat map." /> : (
+              <Suspense fallback={<div className="text-center py-10 text-muted-foreground">Loading map…</div>}>
+                <ThreatMap ips={scanState.ips} />
+              </Suspense>
+            ))}
+
+            {/* JS CODE ANALYZER */}
+            {activeTab === 'jsanalyzer' && ((scanState.jsCodeFindings?.length || 0) === 0 ? <Empty msg="No JS code analysis findings." /> : (
+              <div>
+                {/* Summary */}
+                <div className="mb-4 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <div className="text-[11px] font-semibold text-primary mb-2">JS Code Analysis Summary</div>
+                  <div className="grid grid-cols-4 gap-2 text-[10px]">
+                    <div><span className="text-muted-foreground">Endpoints:</span> <span className="text-[hsl(var(--teal))]">{scanState.jsCodeFindings.filter(f => f.category === 'endpoint').length}</span></div>
+                    <div><span className="text-muted-foreground">Bugs:</span> <span className="text-destructive">{scanState.jsCodeFindings.filter(f => f.category === 'bug').length}</span></div>
+                    <div><span className="text-muted-foreground">Secrets:</span> <span className="text-primary">{scanState.jsCodeFindings.filter(f => f.category === 'secret').length}</span></div>
+                    <div><span className="text-muted-foreground">Info:</span> <span className="text-muted-foreground">{scanState.jsCodeFindings.filter(f => f.category === 'info').length}</span></div>
+                  </div>
+                </div>
+                {/* Filter by category */}
+                {['bug', 'endpoint', 'secret', 'info'].map(cat => {
+                  const items = scanState.jsCodeFindings.filter(f => f.category === cat);
+                  if (!items.length) return null;
+                  return (
+                    <div key={cat} className="mb-4">
+                      <h3 className="text-[11px] font-bold tracking-[0.1em] uppercase mb-2" style={{ color: cat === 'bug' ? 'hsl(0,72%,60%)' : cat === 'endpoint' ? 'hsl(var(--teal))' : cat === 'secret' ? 'hsl(var(--amber))' : 'hsl(var(--muted-foreground))' }}>
+                        {cat === 'bug' ? '🐛 Security Bugs' : cat === 'endpoint' ? '🔗 Extracted Endpoints' : cat === 'secret' ? '🔑 Secrets' : 'ℹ️ Info'} ({items.length})
+                      </h3>
+                      {items.filter(f => !filter || f.match.toLowerCase().includes(filter.toLowerCase()) || f.file.toLowerCase().includes(filter.toLowerCase())).map((f, i) => (
+                        <div key={i} className="mb-1.5 p-2.5 rounded-lg border bg-white/[0.02] border-border hover:border-primary/20 transition-colors">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <SevBadge sev={f.sev} />
+                            <span className="font-semibold text-[10px]">{f.type}</span>
+                          </div>
+                          <div className="text-primary text-[10px] font-mono ml-6 break-all">{f.match}</div>
+                          <div className="text-muted-foreground text-[8px] ml-6 truncate">File: {f.file}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             ))}
 
