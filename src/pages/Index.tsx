@@ -141,6 +141,7 @@ const Index = () => {
   const [filter, setFilter] = useState('');
   const [queueDomains, setQueueDomains] = useState('');
   const [queueStatus, setQueueStatus] = useState<{ domain: string; status: string }[]>([]);
+  const [shareId, setShareId] = useState<string | null>(null);
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
