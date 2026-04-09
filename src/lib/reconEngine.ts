@@ -590,6 +590,173 @@ export async function scanJSSecrets(jsFiles: EndpointEntry[]): Promise<SecretFin
 }
 
 // ══════════════════════════════════════════
+//  JS CODE ANALYZER — Find bugs, endpoints, secrets in JS
+// ══════════════════════════════════════════
+
+export interface JSCodeFinding {
+  type: string; sev: string; desc: string; file: string; match: string; category: 'endpoint' | 'bug' | 'secret' | 'info';
+}
+
+const JS_BUG_PATTERNS = [
+  // Real endpoints extraction
+  { re: /(?:fetch|axios\.(?:get|post|put|delete|patch)|XMLHttpRequest|\.ajax)\s*\(\s*["'`]([^"'`\s]+)["'`]/g, name: 'API Call', sev: 'INFO', cat: 'endpoint' as const },
+  { re: /(?:api|endpoint|url|base_?url|api_?url|server_?url)\s*[:=]\s*["'`](https?:\/\/[^"'`\s]+)["'`]/gi, name: 'Hardcoded URL', sev: 'MEDIUM', cat: 'endpoint' as const },
+  { re: /["'`](\/api\/[a-zA-Z0-9/_\-{}]+)["'`]/g, name: 'API Route', sev: 'INFO', cat: 'endpoint' as const },
+  { re: /["'`](\/v[12345]\/[a-zA-Z0-9/_\-{}]+)["'`]/g, name: 'Versioned API', sev: 'INFO', cat: 'endpoint' as const },
+  { re: /["'`](https?:\/\/[a-zA-Z0-9.\-]+(?:\/[a-zA-Z0-9/_\-{}]+)+)["'`]/g, name: 'Full URL', sev: 'INFO', cat: 'endpoint' as const },
+  // Security bugs
+  { re: /eval\s*\(\s*(?!["'`])/g, name: 'Dynamic eval()', sev: 'CRITICAL', cat: 'bug' as const },
+  { re: /new\s+Function\s*\(/g, name: 'new Function()', sev: 'CRITICAL', cat: 'bug' as const },
+  { re: /document\.write\s*\(/g, name: 'document.write', sev: 'HIGH', cat: 'bug' as const },
+  { re: /\.innerHTML\s*=\s*(?!["'`]<)/g, name: 'Dynamic innerHTML', sev: 'HIGH', cat: 'bug' as const },
+  { re: /dangerouslySetInnerHTML/g, name: 'dangerouslySetInnerHTML', sev: 'HIGH', cat: 'bug' as const },
+  { re: /postMessage\s*\([^)]*\*[^)]*\)/g, name: 'postMessage wildcard', sev: 'HIGH', cat: 'bug' as const },
+  { re: /window\.addEventListener\s*\(\s*["']message["']\s*,\s*function\s*\(\s*\w+\s*\)\s*\{(?:(?!origin).)*\}/gs, name: 'postMessage no origin check', sev: 'HIGH', cat: 'bug' as const },
+  { re: /location\.href\s*=\s*(?:window\.location\.hash|document\.URL|location\.search|location\.hash)/g, name: 'DOM-based redirect', sev: 'HIGH', cat: 'bug' as const },
+  { re: /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*["'`](?:token|password|secret|api[_-]?key|auth|session|jwt|credential)/gi, name: 'Sensitive data in storage', sev: 'HIGH', cat: 'bug' as const },
+  { re: /console\.log\s*\(\s*(?:.*(?:password|token|secret|key|auth|credential|jwt))/gi, name: 'Logging sensitive data', sev: 'MEDIUM', cat: 'bug' as const },
+  { re: /(?:cors|access.control.allow.origin)\s*[:=]\s*["'`]\*["'`]/gi, name: 'CORS wildcard in code', sev: 'MEDIUM', cat: 'bug' as const },
+  { re: /(?:verify|check|validate)(?:ssl|tls|cert(?:ificate)?)\s*[:=]\s*false/gi, name: 'SSL verification disabled', sev: 'HIGH', cat: 'bug' as const },
+  { re: /(?:secure|httponly|samesite)\s*[:=]\s*false/gi, name: 'Cookie security disabled', sev: 'MEDIUM', cat: 'bug' as const },
+  { re: /(?:debug|dev)(?:_?mode)?\s*[:=]\s*true/gi, name: 'Debug mode enabled', sev: 'MEDIUM', cat: 'bug' as const },
+  { re: /TODO|FIXME|HACK|XXX|BUG|VULNERABILITY/g, name: 'Dev comment', sev: 'LOW', cat: 'info' as const },
+  { re: /sourceMappingURL\s*=/g, name: 'Source map exposed', sev: 'LOW', cat: 'info' as const },
+];
+
+export async function analyzeJSCode(jsFiles: EndpointEntry[]): Promise<JSCodeFinding[]> {
+  const findings: JSCodeFinding[] = [];
+  const seen = new Set<string>();
+  for (const js of jsFiles) {
+    try {
+      const r = await pFetch(js.url, 15000);
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (text.length > 3000000) continue;
+      for (const pat of JS_BUG_PATTERNS) {
+        const re = new RegExp(pat.re.source, pat.re.flags);
+        let m;
+        while ((m = re.exec(text)) !== null) {
+          const match = (m[1] || m[0]).slice(0, 150);
+          const key = `${pat.name}:${match}:${js.url}`;
+          if (seen.has(key)) continue; seen.add(key);
+          // Filter junk endpoints
+          if (pat.cat === 'endpoint') {
+            if (/\.(css|png|jpg|svg|gif|ico|woff|ttf|eot)$/i.test(match)) continue;
+            if (match.length < 3 || match.includes('{{') || match.includes('$')) continue;
+          }
+          findings.push({ type: pat.name, sev: pat.sev, desc: `Found ${pat.name}`, file: js.url, match, category: pat.cat });
+        }
+      }
+    } catch { /* */ }
+    await sleep(30);
+  }
+  return findings;
+}
+
+// ══════════════════════════════════════════
+//  ENHANCED TECH STACK DETECTION
+// ══════════════════════════════════════════
+
+const TECH_SIGNATURES: { name: string; header?: RegExp; body?: RegExp; cookie?: RegExp; meta?: RegExp }[] = [
+  { name: 'WordPress', body: /wp-content|wp-includes|wp-json/i },
+  { name: 'Drupal', body: /Drupal\.settings|sites\/default\/files/i, header: /X-Drupal/i },
+  { name: 'Joomla', body: /\/media\/jui\/|com_content/i },
+  { name: 'Magento', body: /Mage\.Cookies|varien\/js/i, cookie: /frontend=/i },
+  { name: 'Shopify', body: /cdn\.shopify\.com|Shopify\.theme/i },
+  { name: 'React', body: /react\.production\.min|__NEXT_DATA__|_reactRootContainer|react-root/i },
+  { name: 'Next.js', body: /__NEXT_DATA__|_next\/static/i, header: /x-powered-by:\s*Next\.js/i },
+  { name: 'Nuxt.js', body: /__NUXT__|_nuxt\//i },
+  { name: 'Vue.js', body: /vue\.runtime|vue\.min\.js|Vue\.\$mount|__vue__/i },
+  { name: 'Angular', body: /ng-app|ng-controller|angular\.min\.js|zone\.js/i },
+  { name: 'Svelte', body: /svelte-|__svelte/i },
+  { name: 'jQuery', body: /jquery\.min\.js|jquery-\d/i },
+  { name: 'Bootstrap', body: /bootstrap\.min\.(css|js)/i },
+  { name: 'Tailwind CSS', body: /tailwindcss|tailwind\.min/i },
+  { name: 'Laravel', body: /laravel_session|csrf-token.*Laravel/i, cookie: /laravel_session/i },
+  { name: 'Django', body: /csrfmiddlewaretoken|django/i, cookie: /csrftoken/i },
+  { name: 'Flask', header: /Werkzeug/i },
+  { name: 'Express.js', header: /X-Powered-By:\s*Express/i },
+  { name: 'Spring Boot', body: /actuator|spring/i, header: /X-Application-Context/i },
+  { name: 'ASP.NET', header: /X-AspNet-Version|X-Powered-By:\s*ASP\.NET/i, cookie: /ASP\.NET_SessionId/i },
+  { name: 'Ruby on Rails', header: /X-Powered-By:\s*Phusion/i, cookie: /_session_id/i },
+  { name: 'Nginx', header: /server:\s*nginx/i },
+  { name: 'Apache', header: /server:\s*Apache/i },
+  { name: 'IIS', header: /server:\s*Microsoft-IIS/i },
+  { name: 'Cloudflare', header: /server:\s*cloudflare|cf-ray/i },
+  { name: 'AWS CloudFront', header: /x-amz-cf-|via:.*cloudfront/i },
+  { name: 'Varnish', header: /via:.*varnish|x-varnish/i },
+  { name: 'Fastly', header: /x-served-by:.*cache|via:.*fastly/i },
+  { name: 'Google Analytics', body: /google-analytics\.com|gtag|UA-\d{4,10}-\d/i },
+  { name: 'Google Tag Manager', body: /googletagmanager\.com|GTM-[A-Z0-9]+/i },
+  { name: 'reCAPTCHA', body: /recaptcha|grecaptcha/i },
+  { name: 'hCaptcha', body: /hcaptcha\.com/i },
+  { name: 'Stripe', body: /js\.stripe\.com|Stripe\(/i },
+  { name: 'PayPal', body: /paypal\.com\/sdk/i },
+  { name: 'Firebase', body: /firebase\.js|firebaseapp\.com|firebaseio\.com/i },
+  { name: 'Supabase', body: /supabase\.co|supabase\.js/i },
+  { name: 'Sentry', body: /sentry\.io|Sentry\.init/i },
+  { name: 'Datadog', body: /datadoghq\.com|dd-rum/i },
+  { name: 'Hotjar', body: /hotjar\.com|hj\./i },
+  { name: 'Intercom', body: /intercom\.io|Intercom\(/i },
+  { name: 'Zendesk', body: /zendesk\.com|zE\(/i },
+  { name: 'Hubspot', body: /hubspot\.com|hs-scripts/i },
+  { name: 'Segment', body: /segment\.com|analytics\.js/i },
+  { name: 'Mixpanel', body: /mixpanel\.com|mixpanel\.init/i },
+  { name: 'Amplitude', body: /amplitude\.com|amplitude\.init/i },
+  { name: 'Webpack', body: /webpackJsonp|__webpack_require__/i },
+  { name: 'Parcel', body: /parcelRequire/i },
+  { name: 'Vite', body: /@vite|vite\.config/i },
+  { name: 'Socket.io', body: /socket\.io\.js|io\.connect/i },
+  { name: 'GraphQL', body: /graphql|__schema|IntrospectionQuery/i },
+  { name: 'Swagger', body: /swagger-ui|openapi/i },
+  { name: 'Docker', body: /docker/i, header: /docker/i },
+  { name: 'Kubernetes', body: /kubernetes|k8s/i },
+  { name: 'Grafana', body: /grafana/i },
+  { name: 'Jenkins', body: /jenkins/i, header: /X-Jenkins/i },
+  { name: 'Elasticsearch', body: /elasticsearch/i },
+  { name: 'Redis', header: /redis/i },
+  { name: 'MongoDB', body: /mongodb/i },
+  { name: 'PHP', header: /X-Powered-By:\s*PHP/i },
+  { name: 'Node.js', header: /X-Powered-By:\s*(?:Express|Koa|Fastify|Hapi)/i },
+];
+
+export async function detectTechStack(domain: string, hdrs: any[], probes: ProbeFinding[]): Promise<string[]> {
+  const tech = new Set<string>();
+  // From headers
+  const headerStr = hdrs.map(h => `${h.key}: ${h.value}`).join('\n');
+  TECH_SIGNATURES.forEach(sig => {
+    if (sig.header && sig.header.test(headerStr)) tech.add(sig.name);
+  });
+  // From probes
+  probes.forEach(p => {
+    p.tech?.forEach(t => tech.add(t));
+  });
+  // From body of main domain
+  try {
+    const r = await pFetch(`https://${domain}`, 15000);
+    if (r.ok) {
+      const body = await r.text();
+      const cookies = r.headers?.get('set-cookie') || '';
+      TECH_SIGNATURES.forEach(sig => {
+        if (sig.body && sig.body.test(body)) tech.add(sig.name);
+        if (sig.cookie && sig.cookie.test(cookies)) tech.add(sig.name);
+      });
+    }
+  } catch { /* */ }
+  // From www subdomain
+  try {
+    const r = await pFetch(`https://www.${domain}`, 10000);
+    if (r.ok) {
+      const body = await r.text();
+      TECH_SIGNATURES.forEach(sig => {
+        if (sig.body && sig.body.test(body)) tech.add(sig.name);
+      });
+    }
+  } catch { /* */ }
+  return [...tech];
+}
+
+// ══════════════════════════════════════════
 //  DOM XSS SINK SCANNING
 // ══════════════════════════════════════════
 
