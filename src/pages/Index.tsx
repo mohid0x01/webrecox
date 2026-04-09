@@ -401,6 +401,9 @@ const Index = () => {
                 {label}
               </button>
             ))}
+            <button onClick={shareScan} className="px-2.5 py-1.5 border border-[hsl(var(--green))]/20 bg-[hsl(var(--green))]/5 rounded-lg text-[10px] font-semibold text-[hsl(var(--green))] hover:bg-[hsl(var(--green))]/10 transition-all cursor-pointer flex items-center gap-1">
+              <Share2 size={10} /> Share
+            </button>
             <a href="/oneliners" className="px-3 py-1.5 border border-[hsl(var(--purple))]/20 bg-[hsl(var(--purple))]/5 rounded-lg text-[10.5px] font-semibold text-[hsl(var(--purple))] hover:bg-[hsl(var(--purple))]/10 transition-colors no-underline">
               ⚡ Oneliners
             </a>
