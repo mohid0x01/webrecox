@@ -363,6 +363,8 @@ const Index = () => {
     queue: queueStatus.length,
     hdrs: scanState.hdrs.length,
     whois: Object.keys(scanState.whois || {}).length > 0 ? 1 : 0,
+    jsanalyzer: scanState.jsCodeFindings?.length || 0,
+    threatmap: Object.keys(scanState.ips).length,
   };
 
   const toggleModule = (name: string) => {
