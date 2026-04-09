@@ -72,6 +72,7 @@ export interface ScanState {
   emailFindings: EmailSecFinding[];
   dorks: DorkEntry[];
   pasteFindings: PasteFinding[];
+  jsCodeFindings: JSCodeFinding[];
   faviconHash: string;
   authSurface: Record<string, string[]>;
   riskScore: number;
@@ -97,7 +98,7 @@ export function createScanState(): ScanState {
     blhFindings: [], bountyFindings: [], depConfFindings: [],
     exploitFindings: [], jwtFindings: [], graphqlFindings: [],
     methodsFindings: [], sstiFindings: [], vhostFindings: [],
-    emailFindings: [], dorks: [], pasteFindings: [],
+    emailFindings: [], dorks: [], pasteFindings: [], jsCodeFindings: [],
     faviconHash: '', authSurface: {},
     riskScore: 0, riskGrade: 'LOW',
   };
