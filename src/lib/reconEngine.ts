@@ -2242,9 +2242,23 @@ export async function runFullScan(
       state.domXss = await scanDOMXSS(state.js);
       onData({ domXss: [...state.domXss] });
     }, onModule, { retries: 1, timeout: 180000 });
+
+    // ── Phase 10b: JS Code Analyzer ──
+    onProgress(71, '🔬 JS Code Analyzer…');
+    await safeRun('JS Code Analyzer', async () => {
+      state.jsCodeFindings = await analyzeJSCode(state.js);
+      onData({ jsCodeFindings: [...state.jsCodeFindings] });
+    }, onModule, { retries: 0, timeout: 300000 });
   }
 
-  // ── Phase 11: CORS Scan — NO LIMIT ──
+  // ── Phase 10c: Enhanced Tech Stack Detection ──
+  onProgress(71, '🏗️ Tech Stack Detection…');
+  await safeRun('Tech Stack', async () => {
+    const detected = await detectTechStack(domain, state.hdrs, state.probes);
+    detected.forEach(t => { if (!state.tech.includes(t)) state.tech.push(t); });
+    onData({ tech: [...state.tech] });
+  }, onModule, { retries: 1, timeout: 30000 });
+
   if (sources.cors !== false) {
     onProgress(72, '🌐 CORS Scan…');
     await safeRun('CORS Scanner', async () => {
