@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks, Mail, Cloud, BookOpen, History, Hash, ChevronRight, Volume2, Bell, MapPin, BarChart3, GitCompare, List } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import { Search, Download, FileJson, FileText, Printer, Loader2, CheckCircle, AlertCircle, Globe, Radar, Activity, Cpu, Shield, Server, Link, Key, Bug, Eye, Terminal, ChevronDown, Copy, ExternalLink, Zap, Lock, Code, Database, Map, FileCode, AlertTriangle, Skull, Cookie, Layers, GitBranch, Crosshair, Wifi, Target, RefreshCw, Gauge, Network, Hammer, Award, Package, Fingerprint, Box, ListChecks, Mail, Cloud, BookOpen, History, Hash, ChevronRight, Volume2, Bell, MapPin, BarChart3, GitCompare, List, Share2, Keyboard, Microscope } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { exportCSV, exportJSON, exportTXT, exportPDF } from '@/lib/exportUtils';
 import { toast } from 'sonner';
@@ -8,6 +8,7 @@ import {
   generateMarkdownReport, generateBurpXML, generateNucleiTargets,
 } from '@/lib/reconEngine';
 import { playScanStart, playScanComplete, playModuleDone, playModuleError, playAlert, playFindingCritical } from '@/lib/soundUtils';
+const ThreatMap = lazy(() => import('@/components/ThreatMap'));
 
 // ── All tabs ──
 const ALL_TABS = [
