@@ -299,6 +299,16 @@ const Index = () => {
 
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!', { duration: 1000 }); };
 
+  const shareScan = async () => {
+    if (!scanState.domain) { toast.error('No scan to share'); return; }
+    const { data } = await supabase.from('scan_results').select('id').eq('domain', scanState.domain.toLowerCase()).order('created_at', { ascending: false }).limit(1);
+    if (data?.[0]) {
+      const url = `${window.location.origin}/?share=${data[0].id}`;
+      navigator.clipboard.writeText(url);
+      toast.success('Share link copied! Recipients will see full results.', { duration: 5000 });
+    } else toast.error('Save a scan first');
+  };
+
   const filteredTabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
 
   const counts: Record<string, number> = {
