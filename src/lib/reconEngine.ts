@@ -826,7 +826,6 @@ const META_GENERATORS: { re: RegExp; name: string }[] = [
   { re: /content="Wix\.com\s*Website\s*Builder"/i, name: 'Wix' },
   { re: /content="Webflow"/i, name: 'Webflow' },
 ];
-];
 
 export async function detectTechStack(domain: string, hdrs: any[], probes: ProbeFinding[]): Promise<string[]> {
   const tech = new Set<string>();
@@ -835,32 +834,54 @@ export async function detectTechStack(domain: string, hdrs: any[], probes: Probe
   TECH_SIGNATURES.forEach(sig => {
     if (sig.header && sig.header.test(headerStr)) tech.add(sig.name);
   });
-  // From probes
-  probes.forEach(p => {
-    p.tech?.forEach(t => tech.add(t));
-  });
-  // From body of main domain
-  try {
-    const r = await pFetch(`https://${domain}`, 15000);
-    if (r.ok) {
+  // From probes (existing tech list)
+  probes.forEach(p => { p.tech?.forEach(t => tech.add(t)); });
+
+  const fingerprint = (body: string, cookies: string) => {
+    TECH_SIGNATURES.forEach(sig => {
+      if (sig.body && sig.body.test(body)) tech.add(sig.name);
+      if (sig.cookie && sig.cookie.test(cookies)) tech.add(sig.name);
+    });
+    META_GENERATORS.forEach(g => { if (g.re.test(body)) tech.add(g.name); });
+    // X-Powered-By inside body? script src patterns?
+    const scriptSrcs = (body.match(/<script[^>]+src=["']([^"']+)["']/gi) || []).slice(0, 200);
+    scriptSrcs.forEach(s => {
+      if (/cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare/i.test(s)) tech.add('Public CDN');
+    });
+  };
+
+  // Probe multiple URLs to maximize signature coverage
+  const urls = [`https://${domain}`, `https://www.${domain}`, `http://${domain}`, `https://${domain}/`];
+  for (const u of urls) {
+    try {
+      const r = await pFetch(u, 12000);
+      if (!r.ok) continue;
       const body = await r.text();
       const cookies = r.headers?.get('set-cookie') || '';
-      TECH_SIGNATURES.forEach(sig => {
-        if (sig.body && sig.body.test(body)) tech.add(sig.name);
-        if (sig.cookie && sig.cookie.test(cookies)) tech.add(sig.name);
-      });
-    }
-  } catch { /* */ }
-  // From www subdomain
-  try {
-    const r = await pFetch(`https://www.${domain}`, 10000);
-    if (r.ok) {
+      // Also re-check headers from this response
+      const respHeaders: string[] = [];
+      try { r.headers.forEach((v, k) => respHeaders.push(`${k}: ${v}`)); } catch { /* */ }
+      const headerStr2 = respHeaders.join('\n');
+      TECH_SIGNATURES.forEach(sig => { if (sig.header && sig.header.test(headerStr2)) tech.add(sig.name); });
+      fingerprint(body, cookies);
+    } catch { /* */ }
+  }
+
+  // Probe a few common tech-revealing endpoints
+  const techPaths = ['/robots.txt', '/.well-known/security.txt', '/humans.txt', '/sitemap.xml', '/wp-login.php', '/admin/', '/api/', '/graphql', '/.env', '/package.json'];
+  for (const p of techPaths) {
+    try {
+      const r = await pFetch(`https://${domain}${p}`, 6000);
+      if (!r.ok) continue;
       const body = await r.text();
-      TECH_SIGNATURES.forEach(sig => {
-        if (sig.body && sig.body.test(body)) tech.add(sig.name);
-      });
-    }
-  } catch { /* */ }
+      fingerprint(body, '');
+      // Heuristics by path
+      if (p === '/wp-login.php' && r.ok) tech.add('WordPress');
+      if (p === '/graphql' && /__schema|errors/i.test(body)) tech.add('GraphQL');
+      if (p === '/package.json' && /\"dependencies\"/.test(body)) tech.add('Node.js');
+    } catch { /* */ }
+  }
+
   return [...tech];
 }
 
