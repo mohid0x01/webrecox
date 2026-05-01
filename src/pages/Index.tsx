@@ -1138,26 +1138,34 @@ const Index = () => {
               ))}</div>
             ))}
 
-            {/* HEATMAP — NO LIMIT */}
+            {/* HEATMAP — NO LIMIT, ALL COLORS */}
             {activeTab === 'heatmap' && (scanState.subs.length === 0 ? <Empty msg="Run a scan to see heatmap." /> : (
               <div>
-                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of ALL {scanState.subs.length} subdomains (0–100)</div>
-                <div className="flex flex-wrap gap-1">
-                  {scanState.subs.map((s, i) => {
-                    let score = 0;
-                    if (s.tko) score += 40;
-                    if (s.ports.some(p => [3306,5432,27017,6379,9200,3389].includes(p))) score += 30;
-                    if (/admin|dev|vpn|api|internal|staging|test|beta/.test(s.subdomain)) score += 20;
-                    if (s.alive) score += 10;
-                    const color = score >= 70 ? 'bg-destructive/60' : score >= 40 ? 'bg-primary/50' : score >= 20 ? 'bg-[hsl(var(--info))]/40' : 'bg-white/[0.06]';
-                    return <div key={i} className={`w-4 h-4 rounded-sm ${color} cursor-pointer`} title={`${s.subdomain} (${score})`} />;
-                  })}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] text-muted-foreground">Risk heatmap of ALL <span className="text-primary font-bold">{scanState.subs.length.toLocaleString()}</span> subdomains (0–100)</div>
+                  <div className="flex gap-3 text-[9px] text-muted-foreground">
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(0,80%,55%)'}} /> ≥70</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(25,90%,55%)'}} /> ≥50</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(45,95%,55%)'}} /> ≥30</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(180,55%,45%)'}} /> ≥15</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(140,50%,40%)'}} /> &lt;15</span>
+                  </div>
                 </div>
-                <div className="mt-3 flex gap-3 text-[9px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70 Critical</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40 High</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20 Medium</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20 Low</span>
+                <div className="flex flex-wrap gap-[3px]">
+                  {scanState.subs.map((s, i) => {
+                    let score = 5;
+                    if (s.tko) score += 50;
+                    if (s.ports.some(p => [3306,5432,27017,6379,9200,3389,21,23,25,11211].includes(p))) score += 35;
+                    if (s.ports.length > 0) score += 8;
+                    if (/admin|dev|vpn|api|internal|staging|test|beta|jenkins|gitlab|jira|wiki|backup|stage|qa|uat|prod|root|sql|db|console/.test(s.subdomain)) score += 25;
+                    if (s.alive) score += 10;
+                    if (s.httpStatus >= 500) score += 8;
+                    score = Math.min(100, score);
+                    const hue = score >= 70 ? 0 : score >= 50 ? 25 : score >= 30 ? 45 : score >= 15 ? 180 : 140;
+                    const sat = score >= 70 ? 80 : score >= 30 ? 90 : 50;
+                    const light = score >= 70 ? 55 : score >= 30 ? 55 : 42;
+                    return <div key={i} className="w-[14px] h-[14px] rounded-sm cursor-pointer transition-transform hover:scale-150 hover:z-10 hover:ring-2 hover:ring-primary/60" style={{background:`hsl(${hue},${sat}%,${light}%)`}} title={`${s.subdomain} — risk ${score}`} />;
+                  })}
                 </div>
               </div>
             ))}
