@@ -610,7 +610,7 @@ const Index = () => {
                   <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">GEO</th>
                   <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">SOURCE</th>
                 </tr></thead>
-                <tbody>{scanState.subs.filter(s => !filter || s.subdomain.includes(filter) || s.ip.includes(filter)).slice(0, 1000).map((s, i) => (
+                <tbody>{scanState.subs.filter(s => !filter || s.subdomain.includes(filter) || s.ip.includes(filter)).slice(0, 100000000).map((s, i) => (
                   <tr key={i} className="border-t border-white/[0.035] hover:bg-primary/[0.025] transition-colors">
                     <td className="py-2 text-muted-foreground">{i + 1}</td>
                     <td className="py-2"><a href={`https://${s.subdomain}`} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline">{s.subdomain}</a></td>
@@ -689,7 +689,7 @@ const Index = () => {
 
             {/* ENDPOINTS */}
             {activeTab === 'ep' && (scanState.eps.length === 0 ? <Empty /> : (
-              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 1000).map((ep, i) => (
+              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 100000000).map((ep, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={ep.url} target="_blank" rel="noreferrer" className="text-secondary-foreground no-underline hover:text-primary truncate text-[11px]">{ep.url}</a>
@@ -700,7 +700,7 @@ const Index = () => {
 
             {/* JS Files */}
             {activeTab === 'js' && (scanState.js.length === 0 ? <Empty /> : (
-              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 1000).map((j, i) => (
+              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 100000000).map((j, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px]">{j.url}</a>
@@ -750,7 +750,7 @@ const Index = () => {
             {/* SSL */}
             {activeTab === 'ssl' && (scanState.ssl.length === 0 ? <Empty msg="No SSL certificates found." /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {scanState.ssl.slice(0, 100).map((c, i) => (
+                {scanState.ssl.map((c, i) => (
                   <div key={i} className="bg-white/[0.028] border border-border rounded-[14px] p-3">
                     <div className="flex items-center gap-2 mb-1">
                       <Lock size={12} className="text-primary" />
@@ -873,7 +873,7 @@ const Index = () => {
 
             {/* PROBE */}
             {activeTab === 'probe' && (scanState.probes.length === 0 ? <Empty /> : (
-              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).slice(0, 500).map((p, i) => (
+              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).slice(0, 100000000).map((p, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03]">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${p.alive ? 'bg-[hsl(var(--green))]' : 'bg-destructive'}`} />
                   <StatusBadge status={p.status} />
