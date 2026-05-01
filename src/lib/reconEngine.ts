@@ -262,7 +262,7 @@ export async function fetchSonar(domain: string) {
 
 export async function fetchWBSubs(domain: string) {
   try {
-    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey&limit=10000`, 30000);
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey&limit=1000000`, 60000);
     const text = await r.text();
     const seen = new Set<string>(), out: any[] = [];
     text.trim().split('\n').forEach(u => { try { const h = new URL(u.trim()).hostname.toLowerCase().replace(/^\*\./, ''); if (h && isValidSub(h, domain) && !seen.has(h)) { seen.add(h); out.push({ subdomain: h, ip: '', source: 'Wayback' }); } } catch { /* */ } });
@@ -412,8 +412,8 @@ export async function fetchWBUrls(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
   const queries = [
-    `https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=50000`,
-    `https://web.archive.org/cdx/search/cdx?url=${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=30000`,
+    `https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`,
+    `https://web.archive.org/cdx/search/cdx?url=${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`,
   ];
   for (const q of queries) {
     try {
@@ -438,7 +438,7 @@ export async function fetchWBUrls(domain: string): Promise<EndpointEntry[]> {
 export async function fetchOTXUrls(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= 1000; page++) {
     try {
       const r = await pFetch(`https://otx.alienvault.com/api/v1/indicators/domain/${domain}/url_list?limit=500&page=${page}`, 15000);
       const d = await r.json();
@@ -462,7 +462,7 @@ export async function fetchCC(domain: string): Promise<EndpointEntry[]> {
   let indexId = 'CC-MAIN-2025-18';
   try { const ir = await pFetch('https://index.commoncrawl.org/collinfo.json', 8000); if (ir.ok) { const ix = await ir.json(); if (Array.isArray(ix) && ix.length) indexId = ix[0].id; } } catch { /* */ }
   try {
-    const r = await pFetch(`https://index.commoncrawl.org/${indexId}-index?url=*.${domain}&output=json&limit=10000`, 30000);
+    const r = await pFetch(`https://index.commoncrawl.org/${indexId}-index?url=*.${domain}&output=json&limit=1000000`, 60000);
     const text = await r.text();
     text.trim().split('\n').forEach(line => {
       try {
