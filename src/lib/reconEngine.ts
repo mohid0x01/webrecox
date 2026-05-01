@@ -2111,6 +2111,9 @@ export async function runFullScan(
     { name: 'Riddler', fn: () => fetchRiddler(domain), id: 'riddler' },
     { name: 'Wayback Full', fn: () => fetchWebArchiveFull(domain), id: 'wbfull' },
     { name: 'DNSx Multi', fn: () => dnsxMultiQuery(domain), id: 'dnsx' },
+    { name: 'c99.nl', fn: () => fetchC99(domain), id: 'c99' },
+    { name: 'HudsonRock', fn: () => fetchHudsonRock(domain), id: 'hudson' },
+    { name: 'Digitorus', fn: () => fetchDigitorus(domain), id: 'digitorus' },
   ];
 
   const subJobs = subSources.filter(s => sources[s.id] !== false).map(s =>
