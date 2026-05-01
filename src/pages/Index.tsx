@@ -1215,28 +1215,65 @@ const Index = () => {
               </div>
             ))}
 
-            {/* RISK SCORE */}
-            {activeTab === 'risk' && (
-              <div className="text-center py-10">
-                <div className="text-[80px] font-bold font-mono leading-none mb-3" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
-                  {scanState.riskScore}
+            {/* RISK SCORE — Animated gauge */}
+            {activeTab === 'risk' && (() => {
+              const score = scanState.riskScore || 0;
+              const grade = scanState.riskGrade || 'N/A';
+              const color = grade === 'CRITICAL' ? 'hsl(0,80%,58%)' : grade === 'HIGH' ? 'hsl(25,95%,55%)' : grade === 'MEDIUM' ? 'hsl(45,95%,55%)' : 'hsl(140,55%,50%)';
+              const C = 2 * Math.PI * 90; // circumference
+              const offset = C - (score / 100) * C * 0.75;
+              return (
+                <div className="py-6">
+                  <div className="flex flex-col items-center">
+                    <div className="relative" style={{ width: 260, height: 260 }}>
+                      <svg viewBox="0 0 220 220" className="w-full h-full -rotate-[225deg]">
+                        <defs>
+                          <linearGradient id="riskGrad" x1="0" x2="1">
+                            <stop offset="0" stopColor="hsl(140,55%,50%)" />
+                            <stop offset="0.5" stopColor="hsl(45,95%,55%)" />
+                            <stop offset="1" stopColor="hsl(0,80%,58%)" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="110" cy="110" r="90" fill="none" stroke="hsl(var(--border))" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${C * 0.75} ${C}`} />
+                        <circle cx="110" cy="110" r="90" fill="none" stroke="url(#riskGrad)" strokeWidth="14" strokeLinecap="round"
+                          strokeDasharray={`${C * 0.75} ${C}`} strokeDashoffset={offset}
+                          style={{ transition: 'stroke-dashoffset 1.6s cubic-bezier(.2,.9,.3,1)', filter: `drop-shadow(0 0 14px ${color})` }} />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="text-[12px] font-mono uppercase tracking-[0.3em] text-muted-foreground">Risk</div>
+                        <div className="text-[72px] font-bold leading-none font-mono tabular-nums" style={{ color, textShadow: `0 0 24px ${color}66` }}>{score}</div>
+                        <div className="text-[11px] font-mono text-muted-foreground">/ 100</div>
+                        <div className="mt-2 px-3 py-0.5 rounded-full text-[11px] font-bold tracking-[0.18em] border" style={{ color, borderColor: color, background: `${color}14` }}>{grade}</div>
+                      </div>
+                    </div>
+                    <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-2.5 w-full max-w-3xl">
+                      {[
+                        { label: 'Subdomains', val: scanState.subs.length, color: 'hsl(180,55%,55%)' },
+                        { label: 'Live Hosts', val: scanState.subs.filter(s => s.alive).length, color: 'hsl(140,55%,50%)' },
+                        { label: 'Unique IPs', val: Object.keys(scanState.ips).length, color: 'hsl(200,75%,55%)' },
+                        { label: 'Endpoints', val: scanState.eps.length, color: 'hsl(45,95%,55%)' },
+                        { label: 'JS Files', val: scanState.js.length, color: 'hsl(60,80%,55%)' },
+                        { label: 'Secrets', val: scanState.secrets.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'CORS', val: scanState.corsFindings.length, color: 'hsl(25,95%,55%)' },
+                        { label: 'Nuclei', val: scanState.nucleiFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'IDOR', val: scanState.idorFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Takeover', val: scanState.takeover.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Exploits', val: scanState.exploitFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Dark Web', val: scanState.darkWebFindings.length, color: 'hsl(280,60%,60%)' },
+                      ].map(s => (
+                        <div key={s.label} className="p-3 rounded-lg border bg-white/[0.02] border-border hover:border-primary/30 transition-all">
+                          <div className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mb-1">{s.label}</div>
+                          <div className="text-[22px] font-bold font-mono tabular-nums" style={{ color: s.color }}>{Number(s.val).toLocaleString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 text-[10.5px] text-muted-foreground font-mono text-center max-w-xl">
+                      Composite risk uses subdomain count, exposed dangerous ports, secret/CVE findings, takeover signals, dark-web/breach hits and active vulnerabilities.
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[22px] font-bold mb-1" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
-                  {scanState.riskGrade || 'N/A'}
-                </div>
-                <p className="text-muted-foreground text-sm">Composite risk score out of 100</p>
-                <div className="mt-8 max-w-md mx-auto text-left grid grid-cols-2 gap-2 text-[11px]">
-                  {[
-                    ['Subdomains', scanState.subs.length], ['Secrets', scanState.secrets.length],
-                    ['CORS Issues', scanState.corsFindings.length], ['Nuclei Hits', scanState.nucleiFindings.length],
-                    ['IDOR', scanState.idorFindings.length], ['Dark Web', scanState.darkWebFindings.length],
-                    ['Takeover', scanState.takeover.length], ['Exploits', scanState.exploitFindings.length],
-                  ].map(([label, val]) => (
-                    <div key={String(label)} className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">{label}:</span> <span className="text-foreground font-semibold">{val}</span></div>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* DIFF */}
             {activeTab === 'diff' && (
