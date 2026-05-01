@@ -1938,15 +1938,75 @@ export async function fetchWebArchiveFull(domain: string) {
   return out;
 }
 
+// ── c99.nl Subdomain Finder ──
+export async function fetchC99(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://subdomainfinder.c99.nl/scans/${new Date().toISOString().slice(0, 10)}/${domain}`, 20000);
+    const html = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'c99.nl' }); }
+    }
+  } catch { /* */ }
+  // Fallback to landing-page scan
+  if (!out.length) {
+    try {
+      const r = await pFetch(`https://subdomainfinder.c99.nl/?domain=${domain}`, 15000);
+      const html = await r.text();
+      const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+      let m;
+      while ((m = re.exec(html)) !== null) {
+        const s = m[1].toLowerCase();
+        if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'c99.nl' }); }
+      }
+    } catch { /* */ }
+  }
+  return out;
+}
+
+// ── Additional sources ──
+export async function fetchHudsonRock(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain?domain=${domain}`, 12000);
+    const d = await r.json();
+    (d.data?.employees_urls || d.urls || []).forEach((rec: any) => {
+      try {
+        const h = new URL(rec.url || rec).hostname.toLowerCase();
+        if (h && isValidSub(h, domain) && !seen.has(h)) { seen.add(h); out.push({ subdomain: h, ip: '', source: 'HudsonRock' }); }
+      } catch { /* */ }
+    });
+  } catch { /* */ }
+  return out;
+}
+
+export async function fetchDigitorus(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://certdb.digitorus.com/?domain=${domain}`, 15000);
+    const html = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'Digitorus' }); }
+    }
+  } catch { /* */ }
+  return out;
+}
+
 export async function fetchGAU(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
   try {
-    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=100000`, 60000);
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`, 90000);
     const text = await r.text();
     if (text.startsWith('[')) {
       const data = JSON.parse(text);
-      for (let i = 1; i < data.length && all.length < 1000000; i++) {
+      for (let i = 1; i < data.length; i++) {
         const u = normUrl(data[i][0]);
         if (!u || isJunkUrl(u) || JUNK.test(u)) continue;
         const k = urlKey(u);
