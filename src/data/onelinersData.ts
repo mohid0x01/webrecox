@@ -180,7 +180,7 @@ export const ONELINERS_DATA = [
 export const SECTION_NAMES: Record<string, string> = {
   subdomain: '🌐 Subdomain Enumeration',
   asn: '🖧 ASN & IP Discovery',
-  live: '💚 Live Host Discovery',
+  live: '💚 Live Host & Tech',
   urls: '🔗 URL Collection',
   vuln: '🛡️ Vulnerability Scanning',
   params: '🧩 Hidden Parameter Discovery',
@@ -192,6 +192,8 @@ export const SECTION_NAMES: Record<string, string> = {
   lfi: '📄 LFI Testing',
   xxe: '🧬 XXE Injection',
   ssti: '📐 SSTI',
+  xss: '💢 XSS',
+  sqli: '💉 SQL Injection',
   auth: '🔑 Auth Bypass',
   race: '⚡ Race Conditions',
   graphql: '◉ GraphQL Attacks',
