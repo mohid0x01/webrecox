@@ -610,7 +610,7 @@ const Index = () => {
                   <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">GEO</th>
                   <th className="pb-2 font-bold text-[9.5px] tracking-[0.12em] uppercase">SOURCE</th>
                 </tr></thead>
-                <tbody>{scanState.subs.filter(s => !filter || s.subdomain.includes(filter) || s.ip.includes(filter)).slice(0, 1000).map((s, i) => (
+                <tbody>{scanState.subs.filter(s => !filter || s.subdomain.includes(filter) || s.ip.includes(filter)).slice(0, 100000000).map((s, i) => (
                   <tr key={i} className="border-t border-white/[0.035] hover:bg-primary/[0.025] transition-colors">
                     <td className="py-2 text-muted-foreground">{i + 1}</td>
                     <td className="py-2"><a href={`https://${s.subdomain}`} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline">{s.subdomain}</a></td>
@@ -689,7 +689,7 @@ const Index = () => {
 
             {/* ENDPOINTS */}
             {activeTab === 'ep' && (scanState.eps.length === 0 ? <Empty /> : (
-              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 1000).map((ep, i) => (
+              <div>{scanState.eps.filter(e => !filter || e.url.includes(filter)).slice(0, 100000000).map((ep, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={ep.url} target="_blank" rel="noreferrer" className="text-secondary-foreground no-underline hover:text-primary truncate text-[11px]">{ep.url}</a>
@@ -700,7 +700,7 @@ const Index = () => {
 
             {/* JS Files */}
             {activeTab === 'js' && (scanState.js.length === 0 ? <Empty /> : (
-              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 1000).map((j, i) => (
+              <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 100000000).map((j, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
                   <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px]">{j.url}</a>
@@ -750,7 +750,7 @@ const Index = () => {
             {/* SSL */}
             {activeTab === 'ssl' && (scanState.ssl.length === 0 ? <Empty msg="No SSL certificates found." /> : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {scanState.ssl.slice(0, 100).map((c, i) => (
+                {scanState.ssl.map((c, i) => (
                   <div key={i} className="bg-white/[0.028] border border-border rounded-[14px] p-3">
                     <div className="flex items-center gap-2 mb-1">
                       <Lock size={12} className="text-primary" />
@@ -873,7 +873,7 @@ const Index = () => {
 
             {/* PROBE */}
             {activeTab === 'probe' && (scanState.probes.length === 0 ? <Empty /> : (
-              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).slice(0, 500).map((p, i) => (
+              <div>{scanState.probes.filter(p => !filter || p.host.includes(filter)).slice(0, 100000000).map((p, i) => (
                 <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03]">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${p.alive ? 'bg-[hsl(var(--green))]' : 'bg-destructive'}`} />
                   <StatusBadge status={p.status} />
@@ -1138,26 +1138,34 @@ const Index = () => {
               ))}</div>
             ))}
 
-            {/* HEATMAP — NO LIMIT */}
+            {/* HEATMAP — NO LIMIT, ALL COLORS */}
             {activeTab === 'heatmap' && (scanState.subs.length === 0 ? <Empty msg="Run a scan to see heatmap." /> : (
               <div>
-                <div className="text-[11px] text-muted-foreground mb-3">Risk heatmap of ALL {scanState.subs.length} subdomains (0–100)</div>
-                <div className="flex flex-wrap gap-1">
-                  {scanState.subs.map((s, i) => {
-                    let score = 0;
-                    if (s.tko) score += 40;
-                    if (s.ports.some(p => [3306,5432,27017,6379,9200,3389].includes(p))) score += 30;
-                    if (/admin|dev|vpn|api|internal|staging|test|beta/.test(s.subdomain)) score += 20;
-                    if (s.alive) score += 10;
-                    const color = score >= 70 ? 'bg-destructive/60' : score >= 40 ? 'bg-primary/50' : score >= 20 ? 'bg-[hsl(var(--info))]/40' : 'bg-white/[0.06]';
-                    return <div key={i} className={`w-4 h-4 rounded-sm ${color} cursor-pointer`} title={`${s.subdomain} (${score})`} />;
-                  })}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-[11px] text-muted-foreground">Risk heatmap of ALL <span className="text-primary font-bold">{scanState.subs.length.toLocaleString()}</span> subdomains (0–100)</div>
+                  <div className="flex gap-3 text-[9px] text-muted-foreground">
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(0,80%,55%)'}} /> ≥70</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(25,90%,55%)'}} /> ≥50</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(45,95%,55%)'}} /> ≥30</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(180,55%,45%)'}} /> ≥15</span>
+                    <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{background:'hsl(140,50%,40%)'}} /> &lt;15</span>
+                  </div>
                 </div>
-                <div className="mt-3 flex gap-3 text-[9px] text-muted-foreground">
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-destructive/60" /> ≥70 Critical</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-primary/50" /> ≥40 High</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-[hsl(var(--info))]/40" /> ≥20 Medium</span>
-                  <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm bg-white/[0.06]" /> &lt;20 Low</span>
+                <div className="flex flex-wrap gap-[3px]">
+                  {scanState.subs.map((s, i) => {
+                    let score = 5;
+                    if (s.tko) score += 50;
+                    if (s.ports.some(p => [3306,5432,27017,6379,9200,3389,21,23,25,11211].includes(p))) score += 35;
+                    if (s.ports.length > 0) score += 8;
+                    if (/admin|dev|vpn|api|internal|staging|test|beta|jenkins|gitlab|jira|wiki|backup|stage|qa|uat|prod|root|sql|db|console/.test(s.subdomain)) score += 25;
+                    if (s.alive) score += 10;
+                    if (s.httpStatus >= 500) score += 8;
+                    score = Math.min(100, score);
+                    const hue = score >= 70 ? 0 : score >= 50 ? 25 : score >= 30 ? 45 : score >= 15 ? 180 : 140;
+                    const sat = score >= 70 ? 80 : score >= 30 ? 90 : 50;
+                    const light = score >= 70 ? 55 : score >= 30 ? 55 : 42;
+                    return <div key={i} className="w-[14px] h-[14px] rounded-sm cursor-pointer transition-transform hover:scale-150 hover:z-10 hover:ring-2 hover:ring-primary/60" style={{background:`hsl(${hue},${sat}%,${light}%)`}} title={`${s.subdomain} — risk ${score}`} />;
+                  })}
                 </div>
               </div>
             ))}
@@ -1207,28 +1215,65 @@ const Index = () => {
               </div>
             ))}
 
-            {/* RISK SCORE */}
-            {activeTab === 'risk' && (
-              <div className="text-center py-10">
-                <div className="text-[80px] font-bold font-mono leading-none mb-3" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
-                  {scanState.riskScore}
+            {/* RISK SCORE — Animated gauge */}
+            {activeTab === 'risk' && (() => {
+              const score = scanState.riskScore || 0;
+              const grade = scanState.riskGrade || 'N/A';
+              const color = grade === 'CRITICAL' ? 'hsl(0,80%,58%)' : grade === 'HIGH' ? 'hsl(25,95%,55%)' : grade === 'MEDIUM' ? 'hsl(45,95%,55%)' : 'hsl(140,55%,50%)';
+              const C = 2 * Math.PI * 90; // circumference
+              const offset = C - (score / 100) * C * 0.75;
+              return (
+                <div className="py-6">
+                  <div className="flex flex-col items-center">
+                    <div className="relative" style={{ width: 260, height: 260 }}>
+                      <svg viewBox="0 0 220 220" className="w-full h-full -rotate-[225deg]">
+                        <defs>
+                          <linearGradient id="riskGrad" x1="0" x2="1">
+                            <stop offset="0" stopColor="hsl(140,55%,50%)" />
+                            <stop offset="0.5" stopColor="hsl(45,95%,55%)" />
+                            <stop offset="1" stopColor="hsl(0,80%,58%)" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="110" cy="110" r="90" fill="none" stroke="hsl(var(--border))" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${C * 0.75} ${C}`} />
+                        <circle cx="110" cy="110" r="90" fill="none" stroke="url(#riskGrad)" strokeWidth="14" strokeLinecap="round"
+                          strokeDasharray={`${C * 0.75} ${C}`} strokeDashoffset={offset}
+                          style={{ transition: 'stroke-dashoffset 1.6s cubic-bezier(.2,.9,.3,1)', filter: `drop-shadow(0 0 14px ${color})` }} />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="text-[12px] font-mono uppercase tracking-[0.3em] text-muted-foreground">Risk</div>
+                        <div className="text-[72px] font-bold leading-none font-mono tabular-nums" style={{ color, textShadow: `0 0 24px ${color}66` }}>{score}</div>
+                        <div className="text-[11px] font-mono text-muted-foreground">/ 100</div>
+                        <div className="mt-2 px-3 py-0.5 rounded-full text-[11px] font-bold tracking-[0.18em] border" style={{ color, borderColor: color, background: `${color}14` }}>{grade}</div>
+                      </div>
+                    </div>
+                    <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-2.5 w-full max-w-3xl">
+                      {[
+                        { label: 'Subdomains', val: scanState.subs.length, color: 'hsl(180,55%,55%)' },
+                        { label: 'Live Hosts', val: scanState.subs.filter(s => s.alive).length, color: 'hsl(140,55%,50%)' },
+                        { label: 'Unique IPs', val: Object.keys(scanState.ips).length, color: 'hsl(200,75%,55%)' },
+                        { label: 'Endpoints', val: scanState.eps.length, color: 'hsl(45,95%,55%)' },
+                        { label: 'JS Files', val: scanState.js.length, color: 'hsl(60,80%,55%)' },
+                        { label: 'Secrets', val: scanState.secrets.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'CORS', val: scanState.corsFindings.length, color: 'hsl(25,95%,55%)' },
+                        { label: 'Nuclei', val: scanState.nucleiFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'IDOR', val: scanState.idorFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Takeover', val: scanState.takeover.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Exploits', val: scanState.exploitFindings.length, color: 'hsl(0,80%,58%)' },
+                        { label: 'Dark Web', val: scanState.darkWebFindings.length, color: 'hsl(280,60%,60%)' },
+                      ].map(s => (
+                        <div key={s.label} className="p-3 rounded-lg border bg-white/[0.02] border-border hover:border-primary/30 transition-all">
+                          <div className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground mb-1">{s.label}</div>
+                          <div className="text-[22px] font-bold font-mono tabular-nums" style={{ color: s.color }}>{Number(s.val).toLocaleString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 text-[10.5px] text-muted-foreground font-mono text-center max-w-xl">
+                      Composite risk uses subdomain count, exposed dangerous ports, secret/CVE findings, takeover signals, dark-web/breach hits and active vulnerabilities.
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[22px] font-bold mb-1" style={{ color: scanState.riskGrade === 'CRITICAL' ? 'hsl(0,72%,50%)' : scanState.riskGrade === 'HIGH' ? 'hsl(var(--amber))' : 'hsl(var(--green))' }}>
-                  {scanState.riskGrade || 'N/A'}
-                </div>
-                <p className="text-muted-foreground text-sm">Composite risk score out of 100</p>
-                <div className="mt-8 max-w-md mx-auto text-left grid grid-cols-2 gap-2 text-[11px]">
-                  {[
-                    ['Subdomains', scanState.subs.length], ['Secrets', scanState.secrets.length],
-                    ['CORS Issues', scanState.corsFindings.length], ['Nuclei Hits', scanState.nucleiFindings.length],
-                    ['IDOR', scanState.idorFindings.length], ['Dark Web', scanState.darkWebFindings.length],
-                    ['Takeover', scanState.takeover.length], ['Exploits', scanState.exploitFindings.length],
-                  ].map(([label, val]) => (
-                    <div key={String(label)} className="p-2 bg-white/[0.03] rounded-lg border border-border"><span className="text-muted-foreground">{label}:</span> <span className="text-foreground font-semibold">{val}</span></div>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* DIFF */}
             {activeTab === 'diff' && (

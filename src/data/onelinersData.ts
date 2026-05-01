@@ -99,12 +99,88 @@ export const ONELINERS_DATA = [
   {c:'misc',n:'Full Recon Pipeline',d:'Full automated recon mega pipeline',t:['bash'],q:'TARGET="example.com"\nsubfinder -d $TARGET -all -o subs.txt\ncat subs.txt | dnsx -a -silent > live.txt\ncat live.txt | httpx -silent -title -status-code > web.txt\ncat live.txt | gau > urls.txt\nnuclei -l web.txt -t cves/ -severity critical,high -o nuclei.txt'},
   {c:'misc',n:'Security Headers Check',d:'Quick security header audit',t:['bash'],q:'curl -sI https://example.com | grep -iE "(strict-transport|content-security|x-frame|x-content-type|referrer-policy)"'},
   {c:'misc',n:'XSS Dalfox Pipeline',d:'Automated XSS detection pipeline',t:['bash'],q:'cat xss_urls.txt | dalfox pipe --skip-bav --only-poc r --no-color -o dalfox_xss.txt'},
+
+  // ── EXTRA SUBDOMAIN ──
+  {c:'subdomain',n:'Chaos by ProjectDiscovery',d:'Subdomains from public bug bounty programs',t:['bash'],q:'chaos -d example.com -silent | tee chaos.txt'},
+  {c:'subdomain',n:'GitHub Subdomains',d:'Search GitHub for subdomain leakage',t:['bash'],q:'github-subdomains -d example.com -t $GH_TOKEN -o github_subs.txt'},
+  {c:'subdomain',n:'GitLab Subdomains',d:'Pull subdomains from GitLab code search',t:['bash'],q:'gitlab-subdomains -d example.com -t $GL_TOKEN | tee gitlab_subs.txt'},
+  {c:'subdomain',n:'c99 Subdomain Finder',d:'Crawl c99.nl scan history for subdomains',t:['bash'],q:"curl -s 'https://subdomainfinder.c99.nl/?domain=example.com' | grep -Eo '([a-z0-9-]+\\.)+example\\.com' | sort -u"},
+  {c:'subdomain',n:'PuredNS Bruteforce',d:'Pure DNS bruteforce with wildcard filtering',t:['bash'],q:'puredns bruteforce all.txt example.com --resolvers resolvers.txt -w pdns.txt'},
+  {c:'subdomain',n:'AltDNS Permutations',d:'Generate altdns permutations against word list',t:['bash'],q:'altdns -i subs.txt -o data_output -w words.txt -r -s alt_resolved.txt'},
+  {c:'subdomain',n:'Gotator Permutations',d:'Massive permutation engine',t:['bash'],q:'gotator -sub subs.txt -perm perms.txt -depth 1 -numbers 5 -mindup -adv -md > gotator.txt'},
+  {c:'subdomain',n:'Dnsgen Smart Wordlist',d:'Generate likely subdomains from existing list',t:['bash'],q:'cat subs.txt | dnsgen - | massdns -r resolvers.txt -t A -o S -w resolved.txt'},
+  {c:'subdomain',n:'Cero TLS Cert Subs',d:'Pull SANs from active TLS certificates',t:['bash'],q:'cero example.com 2>/dev/null | sort -u'},
+  {c:'subdomain',n:'tls.bufferover.run',d:'Bufferover TLS dataset',t:['bash'],q:"curl -s 'https://tls.bufferover.run/dns?q=.example.com' | jq -r '.Results[]?,.results[]?' | sort -u"},
+
+  // ── EXTRA RECON / TECH ──
+  {c:'live',n:'TLS-X Cert Probe',d:'Pull TLS metadata for live hosts',t:['bash'],q:'tlsx -l live.txt -san -cn -resp -silent -o tls.txt'},
+  {c:'live',n:'Naabu Top Ports',d:'Quick TCP scan of top 1000 ports',t:['bash'],q:'naabu -l live.txt -top-ports 1000 -silent -o ports.txt'},
+  {c:'live',n:'Naabu Full Ports',d:'Full TCP port enumeration',t:['bash'],q:'naabu -l live.txt -p - -silent -rate 8000 -o full_ports.txt'},
+  {c:'live',n:'WhatWeb Tech Detect',d:'Identify tech stack of live URLs',t:['bash'],q:'whatweb -i live.txt --color=never --no-errors -a 3 > whatweb.txt'},
+  {c:'live',n:'Wappalyzer CLI',d:'Wappalyzer technology detection',t:['bash'],q:'cat live.txt | xargs -I {} wappalyzer {} >> wapp.txt'},
+
+  // ── EXTRA URLS / CRAWLING ──
+  {c:'urls',n:'Hakrawler Crawl',d:'Fast async URL crawler',t:['bash'],q:'cat live.txt | hakrawler -d 3 -insecure -subs | sort -u > hak_urls.txt'},
+  {c:'urls',n:'GoSpider Recursive',d:'Recursive spider with JS scraping',t:['bash'],q:'gospider -S live.txt -d 4 -t 50 --js --sitemap --robots -o gospider/'},
+  {c:'urls',n:'Waybackurls',d:'Pull URLs from Wayback Machine',t:['bash'],q:'cat domains.txt | waybackurls | sort -u > wayback.txt'},
+  {c:'urls',n:'Katana Active Crawl',d:'Active deep crawl with form fill',t:['bash'],q:'katana -list live.txt -d 5 -jc -kf all -aff -ef png,jpg,css -silent -o katana.txt'},
+  {c:'urls',n:'JSFinder URLs',d:'Extract URLs from inline JS',t:['bash'],q:'python3 JSFinder.py -u https://example.com -d -ou jsf_urls.txt -os jsf_subs.txt'},
+
+  // ── EXTRA VULN ──
+  {c:'vuln',n:'Nuclei Tech Scan',d:'Run only technology detection templates',t:['bash'],q:'nuclei -l live.txt -t technologies/ -o tech_nuclei.txt'},
+  {c:'vuln',n:'Nuclei Misconfig',d:'Run misconfiguration templates only',t:['bash'],q:'nuclei -l live.txt -t misconfiguration/ -severity medium,high,critical -o misconfig.txt'},
+  {c:'vuln',n:'Nuclei Exposures',d:'Detect exposed panels and files',t:['bash'],q:'nuclei -l live.txt -t exposures/ -o exposures.txt'},
+  {c:'vuln',n:'Nuclei DAST Mode',d:'Active DAST scan with fuzz templates',t:['bash'],q:'nuclei -l live.txt -dast -severity high,critical -o dast.txt'},
+
+  // ── EXTRA XSS ──
+  {c:'xss',n:'GF XSS pattern',d:'Filter URLs for likely XSS sinks',t:['bash'],q:'cat allurls.txt | gf xss | qsreplace \'"><svg onload=confirm(1)>\' | tee xss_payloads.txt'},
+  {c:'xss',n:'Knoxss Pipeline',d:'Send to KNOXSS via API',t:['bash'],q:'cat xss_payloads.txt | xargs -I {} curl -s -d "target={}" -H "X-API-KEY: $KEY" https://api.knoxss.pro/'},
+  {c:'xss',n:'Reflected XSS Verify',d:'Bash one-liner reflection check',t:['bash'],q:"cat urls.txt | qsreplace 'pwn1234567' | xargs -I{} sh -c 'curl -sk \"{}\" | grep -q pwn1234567 && echo VULN: {}'"},
+
+  // ── EXTRA SQLI ──
+  {c:'sqli' as any,n:'SQLMap Auto',d:'Run sqlmap against gf sqli candidates',t:['bash'],q:'cat sqli_targets.txt | xargs -I{} sqlmap -u {} --batch --random-agent --risk=2 --level=3 -o'},
+  {c:'sqli' as any,n:'Time-based SQLi probe',d:'Quick blind SQLi delay test',t:['bash'],q:"cat urls.txt | qsreplace \"' AND SLEEP(5)--\" | xargs -I{} sh -c 'TIME=$(curl -s -o /dev/null -w \"%{time_total}\" \"{}\"); awk -v t=$TIME \"BEGIN{exit (t<4)}\" && echo POSSIBLE: {}'"},
+
+  // ── EXTRA SECRETS / LEAKS ──
+  {c:'apikey',n:'Mantra JS Secrets',d:'Find secrets in JS files at scale',t:['bash'],q:'cat js_files.txt | mantra | tee mantra_secrets.txt'},
+  {c:'apikey',n:'Gitleaks Local',d:'Scan local git repo for leaked secrets',t:['bash'],q:'gitleaks detect --source . --report-format json --report-path gitleaks.json'},
+  {c:'apikey',n:'Detect-Secrets',d:'Yelp detect-secrets baseline scan',t:['bash'],q:'detect-secrets scan --all-files > .secrets.baseline'},
+  {c:'apikey',n:'GitGraber Real-time',d:'Real-time secret hunting on GitHub',t:['py'],q:'python3 gitGraber.py -k wordlists/keywords.txt -q "example.com"'},
+  {c:'apikey',n:'Shhgit Live',d:'Live GitHub secret monitor',t:['bash'],q:'shhgit --search-query "example.com" --silent'},
+
+  // ── EXTRA CLOUD ──
+  {c:'cloud',n:'GCPBucketBrute',d:'GCP storage bucket bruteforce',t:['py'],q:'python3 gcpbucketbrute.py -k targets.txt -u'},
+  {c:'cloud',n:'CloudEnum',d:'Enumerate AWS/Azure/GCP assets by keyword',t:['py'],q:'python3 cloud_enum.py -k example -t 20'},
+  {c:'cloud',n:'AzureHound BloodHound',d:'Azure AD recon via AzureHound',t:['bash'],q:'azurehound list -u USER -p PASS --tenant TENANT_ID -o azure.json'},
+  {c:'cloud',n:'TruffleHog S3',d:'Scan public S3 bucket for secrets',t:['bash'],q:'trufflehog s3 --bucket TARGET-BUCKET --only-verified'},
+  {c:'cloud',n:'AWS IAM Enumerate',d:'Brute IAM users via STS',t:['bash'],q:'aws sts get-caller-identity && aws iam list-users --max-items 1000'},
+
+  // ── EXTRA RECON / OSINT ──
+  {c:'osint',n:'EmailHarvester Bulk',d:'Bulk email harvester',t:['bash'],q:'EmailHarvester -d example.com -e all -l 1000 -s emails.txt'},
+  {c:'osint',n:'Hunter.io API',d:'Pull emails via Hunter.io',t:['bash'],q:'curl -s "https://api.hunter.io/v2/domain-search?domain=example.com&api_key=$HUNTER" | jq'},
+  {c:'osint',n:'Holehe Account Check',d:'Check if email is registered on common services',t:['py'],q:'holehe target@example.com'},
+  {c:'osint',n:'Maigret Username',d:'Find username across 2500+ sites',t:['bash'],q:'maigret targetuser --html --pdf'},
+  {c:'osint',n:'GHunt Google Account',d:'Investigate Google Account from email',t:['bash'],q:'ghunt email target@gmail.com'},
+  {c:'osint',n:'Sherlock Username Hunt',d:'Hunt username across many sites',t:['bash'],q:'sherlock targetuser --timeout 10 --print-found'},
+
+  // ── EXTRA CVE / EXPLOIT ──
+  {c:'cve',n:'CVEMap Lookup',d:'Project Discovery CVE search',t:['bash'],q:'cvemap -id CVE-2024-1234 -json'},
+  {c:'cve',n:'Nuclei KEV',d:'Run only CISA KEV templates',t:['bash'],q:'nuclei -l live.txt -tags kev -severity critical,high'},
+  {c:'cve',n:'Vulners API search',d:'Query Vulners by software/CPE',t:['bash'],q:'curl -s "https://vulners.com/api/v3/search/lucene/?query=apache 2.4.49" | jq'},
+
+  // ── EXTRA PIPELINE / DEVOPS ──
+  {c:'misc',n:'Notify on Critical',d:'Send Nuclei criticals via notify',t:['bash'],q:'nuclei -l live.txt -severity critical -silent | notify -bulk -id slack'},
+  {c:'misc',n:'Recon-ng Workspace',d:'Spin up recon-ng workspace',t:['bash'],q:'recon-ng -w example -r workflow.rc'},
+  {c:'misc',n:'Subjs JS list',d:'Quick JS file extractor',t:['bash'],q:'cat live.txt | subjs | sort -u > js_files.txt'},
+  {c:'misc',n:'Anew Dedupe Pipeline',d:'Append-only deduplicate stream',t:['bash'],q:'subfinder -d example.com -silent | anew subs.txt'},
+  {c:'misc',n:'Interlace Parallel',d:'Parallelize any tool over targets',t:['bash'],q:'interlace -tL targets.txt -threads 50 -c "nuclei -u _target_ -o _target_.txt" -v'},
+  {c:'misc',n:'Tmux Recon Workspace',d:'Multi-pane recon launcher',t:['bash'],q:'tmux new -s recon \\; split-window -h \\; split-window -v \\; select-pane -t 0 \\; send-keys "subfinder -d example.com" C-m'},
 ];
 
 export const SECTION_NAMES: Record<string, string> = {
   subdomain: '🌐 Subdomain Enumeration',
   asn: '🖧 ASN & IP Discovery',
-  live: '💚 Live Host Discovery',
+  live: '💚 Live Host & Tech',
   urls: '🔗 URL Collection',
   vuln: '🛡️ Vulnerability Scanning',
   params: '🧩 Hidden Parameter Discovery',
@@ -116,6 +192,8 @@ export const SECTION_NAMES: Record<string, string> = {
   lfi: '📄 LFI Testing',
   xxe: '🧬 XXE Injection',
   ssti: '📐 SSTI',
+  xss: '💢 XSS',
+  sqli: '💉 SQL Injection',
   auth: '🔑 Auth Bypass',
   race: '⚡ Race Conditions',
   graphql: '◉ GraphQL Attacks',

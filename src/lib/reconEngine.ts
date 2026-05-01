@@ -262,7 +262,7 @@ export async function fetchSonar(domain: string) {
 
 export async function fetchWBSubs(domain: string) {
   try {
-    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey&limit=10000`, 30000);
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey&limit=1000000`, 60000);
     const text = await r.text();
     const seen = new Set<string>(), out: any[] = [];
     text.trim().split('\n').forEach(u => { try { const h = new URL(u.trim()).hostname.toLowerCase().replace(/^\*\./, ''); if (h && isValidSub(h, domain) && !seen.has(h)) { seen.add(h); out.push({ subdomain: h, ip: '', source: 'Wayback' }); } } catch { /* */ } });
@@ -412,8 +412,8 @@ export async function fetchWBUrls(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
   const queries = [
-    `https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=50000`,
-    `https://web.archive.org/cdx/search/cdx?url=${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=30000`,
+    `https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`,
+    `https://web.archive.org/cdx/search/cdx?url=${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`,
   ];
   for (const q of queries) {
     try {
@@ -438,7 +438,7 @@ export async function fetchWBUrls(domain: string): Promise<EndpointEntry[]> {
 export async function fetchOTXUrls(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
-  for (let page = 1; page <= 10; page++) {
+  for (let page = 1; page <= 1000; page++) {
     try {
       const r = await pFetch(`https://otx.alienvault.com/api/v1/indicators/domain/${domain}/url_list?limit=500&page=${page}`, 15000);
       const d = await r.json();
@@ -462,7 +462,7 @@ export async function fetchCC(domain: string): Promise<EndpointEntry[]> {
   let indexId = 'CC-MAIN-2025-18';
   try { const ir = await pFetch('https://index.commoncrawl.org/collinfo.json', 8000); if (ir.ok) { const ix = await ir.json(); if (Array.isArray(ix) && ix.length) indexId = ix[0].id; } } catch { /* */ }
   try {
-    const r = await pFetch(`https://index.commoncrawl.org/${indexId}-index?url=*.${domain}&output=json&limit=10000`, 30000);
+    const r = await pFetch(`https://index.commoncrawl.org/${indexId}-index?url=*.${domain}&output=json&limit=1000000`, 60000);
     const text = await r.text();
     text.trim().split('\n').forEach(line => {
       try {
@@ -718,7 +718,113 @@ const TECH_SIGNATURES: { name: string; header?: RegExp; body?: RegExp; cookie?: 
   { name: 'Redis', header: /redis/i },
   { name: 'MongoDB', body: /mongodb/i },
   { name: 'PHP', header: /X-Powered-By:\s*PHP/i },
-  { name: 'Node.js', header: /X-Powered-By:\s*(?:Express|Koa|Fastify|Hapi)/i },
+  { name: 'Node.js', header: /X-Powered-By:\s*(?:Express|Koa|Fastify|Hapi|Node)/i },
+  // Extended signatures
+  { name: 'Gatsby', body: /___gatsby|gatsby-link|window\.___webpackCompilationHash/i },
+  { name: 'Remix', body: /__remixContext|window\.__remixManifest/i },
+  { name: 'Astro', body: /astro-island|data-astro-/i },
+  { name: 'SolidJS', body: /_$HY\.|solid-js/i },
+  { name: 'Qwik', body: /q:container|qwikloader/i },
+  { name: 'Alpine.js', body: /x-data|alpinejs/i },
+  { name: 'HTMX', body: /htmx\.org|hx-get|hx-post/i },
+  { name: 'Lit', body: /lit-html|lit-element/i },
+  { name: 'Ember', body: /ember\.|ember-cli|EmberENV/i },
+  { name: 'Backbone', body: /Backbone\.|backbone\.min/i },
+  { name: 'Knockout', body: /ko\.applyBindings|knockout-/i },
+  { name: 'Meteor', body: /__meteor_runtime_config__|meteor\.js/i },
+  { name: 'Strapi', body: /strapi-/i, header: /x-powered-by:\s*Strapi/i },
+  { name: 'Sanity', body: /cdn\.sanity\.io|sanityClient/i },
+  { name: 'Contentful', body: /cdn\.contentful\.com|contentful\.js/i },
+  { name: 'Ghost', body: /ghost\.io|content="Ghost\s/i },
+  { name: 'Webflow', body: /webflow\.js|w-mod-js/i },
+  { name: 'Squarespace', body: /squarespace\.com|static1\.squarespace/i },
+  { name: 'Wix', body: /wix\.com|wixstatic\.com/i, header: /x-wix-/i },
+  { name: 'Shopify Plus', body: /shopify-plus|shopify\.com\/cdn/i },
+  { name: 'BigCommerce', body: /bigcommerce\.com|bcapp\./i },
+  { name: 'WooCommerce', body: /woocommerce|wc-/i },
+  { name: 'Salesforce Commerce', body: /demandware\.|sfra-/i },
+  { name: 'Hugo', body: /<meta name="generator" content="Hugo/i },
+  { name: 'Jekyll', body: /<meta name="generator" content="Jekyll/i },
+  { name: 'Hexo', body: /<meta name="generator" content="Hexo/i },
+  { name: 'Eleventy', body: /<meta name="generator" content="Eleventy/i },
+  { name: 'Docusaurus', body: /docusaurus|theme-doc-/i },
+  { name: 'MkDocs', body: /mkdocs|material-/i },
+  { name: 'GitBook', body: /gitbook|gitbook-page/i },
+  { name: 'FastAPI', body: /fastapi|swagger-ui/i, header: /server:.*uvicorn/i },
+  { name: 'Quart', header: /server:\s*hypercorn|quart/i },
+  { name: 'Phoenix', header: /x-powered-by:.*phoenix|x-request-id/i, body: /phoenix\.js/i },
+  { name: 'Gin', header: /server:\s*gin/i },
+  { name: 'Fiber', header: /server:\s*fiber/i },
+  { name: 'Echo (Go)', header: /server:\s*echo/i },
+  { name: 'Cloudflare Workers', header: /server:\s*cloudflare|cf-worker/i },
+  { name: 'Vercel', header: /server:\s*vercel|x-vercel-/i },
+  { name: 'Netlify', header: /server:\s*netlify|x-nf-/i },
+  { name: 'AWS Amplify', header: /x-amzn-/i },
+  { name: 'Akamai', header: /server:.*akamai|x-akamai-/i },
+  { name: 'Imperva', header: /x-iinfo|x-cdn:\s*Imperva/i },
+  { name: 'Sucuri', header: /x-sucuri-/i },
+  { name: 'F5 BIG-IP', header: /bigipserver|x-wa-info/i, cookie: /BIGipServer/i },
+  { name: 'HAProxy', header: /server:\s*haproxy/i },
+  { name: 'Traefik', header: /server:\s*traefik/i },
+  { name: 'Caddy', header: /server:\s*caddy/i },
+  { name: 'LiteSpeed', header: /server:\s*litespeed/i },
+  { name: 'OpenResty', header: /server:.*openresty/i },
+  { name: 'Tomcat', header: /server:.*tomcat|coyote/i },
+  { name: 'Jetty', header: /server:.*jetty/i },
+  { name: 'GlassFish', header: /server:.*glassfish/i },
+  { name: 'WebLogic', header: /x-oracle-bea-weblogic|x-powered-by:.*weblogic/i },
+  { name: 'WebSphere', header: /server:.*websphere/i },
+  { name: 'Sitecore', body: /sitecore|sc_site/i, cookie: /SC_ANALYTICS/i },
+  { name: 'Adobe Experience Manager', body: /\/etc\/clientlibs|cq-/i, header: /x-aem-/i },
+  { name: 'Optimizely', body: /optimizely\.com|optimizelyEdge/i },
+  { name: 'New Relic', body: /newrelic|nr-data/i, header: /x-newrelic-/i },
+  { name: 'Cloudinary', body: /cloudinary\.com|cloudinary-/i },
+  { name: 'Algolia', body: /algolia|algolianet\.com/i },
+  { name: 'Typesense', body: /typesense\.org/i },
+  { name: 'Auth0', body: /auth0\.com|@auth0\//i },
+  { name: 'Okta', body: /okta\.com|oktapreview\.com/i },
+  { name: 'Clerk', body: /clerk\.dev|clerk\.com|@clerk\//i },
+  { name: 'Stytch', body: /stytch\.com/i },
+  { name: 'Magic Auth', body: /magic\.link|@magic-sdk\//i },
+  { name: 'Keycloak', body: /keycloak/i, header: /x-powered-by:.*keycloak/i },
+  { name: 'Cognito', body: /cognito-identity|amazoncognito/i },
+  { name: 'PostHog', body: /posthog\.com|posthog\.init/i },
+  { name: 'Plausible', body: /plausible\.io/i },
+  { name: 'Fathom', body: /usefathom\.com/i },
+  { name: 'Crisp', body: /crisp\.chat|client\.crisp\.chat/i },
+  { name: 'Drift', body: /drift\.com|driftt\.com/i },
+  { name: 'LiveChat', body: /livechatinc\.com|cdn\.livechatinc/i },
+  { name: 'Tawk.to', body: /tawk\.to|embed\.tawk\.to/i },
+  { name: 'Mailchimp', body: /mailchimp\.com|chimpstatic/i },
+  { name: 'Klaviyo', body: /klaviyo\.com|klaviyo\.js/i },
+  { name: 'Cloudflare Turnstile', body: /turnstile|challenges\.cloudflare/i },
+  { name: 'Tealium', body: /tealiumiq|utag\.js/i },
+  { name: 'Adobe Analytics', body: /omniture|s_code|adobe.*analytics/i },
+  { name: 'Yandex Metrica', body: /mc\.yandex\.ru|ym\(/i },
+  { name: 'Baidu Analytics', body: /hm\.baidu\.com/i },
+  { name: 'CKEditor', body: /ckeditor/i },
+  { name: 'TinyMCE', body: /tinymce/i },
+  { name: 'Quill', body: /quill\.js|ql-editor/i },
+  { name: 'Lottie', body: /lottiefiles|lottie-player/i },
+  { name: 'Three.js', body: /three\.js|three\.min/i },
+  { name: 'D3.js', body: /d3\.min|d3\.v\d/i },
+  { name: 'Chart.js', body: /chart\.js|chart\.min/i },
+  { name: 'Mapbox', body: /mapbox\.com|mapbox-gl/i },
+  { name: 'Leaflet', body: /leaflet\.js|leaflet\.css/i },
+  { name: 'Google Maps', body: /maps\.googleapis\.com|google\.maps/i },
+];
+
+// Generator/meta tag detection
+const META_GENERATORS: { re: RegExp; name: string }[] = [
+  { re: /content="WordPress\s*([0-9.]+)?"/i, name: 'WordPress' },
+  { re: /content="Drupal\s*([0-9.]+)?"/i, name: 'Drupal' },
+  { re: /content="Joomla!?\s*([0-9.]+)?"/i, name: 'Joomla' },
+  { re: /content="Hugo\s*([0-9.]+)?"/i, name: 'Hugo' },
+  { re: /content="Jekyll\s*([0-9.]+)?"/i, name: 'Jekyll' },
+  { re: /content="Ghost\s*([0-9.]+)?"/i, name: 'Ghost' },
+  { re: /content="Squarespace"/i, name: 'Squarespace' },
+  { re: /content="Wix\.com\s*Website\s*Builder"/i, name: 'Wix' },
+  { re: /content="Webflow"/i, name: 'Webflow' },
 ];
 
 export async function detectTechStack(domain: string, hdrs: any[], probes: ProbeFinding[]): Promise<string[]> {
@@ -728,32 +834,54 @@ export async function detectTechStack(domain: string, hdrs: any[], probes: Probe
   TECH_SIGNATURES.forEach(sig => {
     if (sig.header && sig.header.test(headerStr)) tech.add(sig.name);
   });
-  // From probes
-  probes.forEach(p => {
-    p.tech?.forEach(t => tech.add(t));
-  });
-  // From body of main domain
-  try {
-    const r = await pFetch(`https://${domain}`, 15000);
-    if (r.ok) {
+  // From probes (existing tech list)
+  probes.forEach(p => { p.tech?.forEach(t => tech.add(t)); });
+
+  const fingerprint = (body: string, cookies: string) => {
+    TECH_SIGNATURES.forEach(sig => {
+      if (sig.body && sig.body.test(body)) tech.add(sig.name);
+      if (sig.cookie && sig.cookie.test(cookies)) tech.add(sig.name);
+    });
+    META_GENERATORS.forEach(g => { if (g.re.test(body)) tech.add(g.name); });
+    // X-Powered-By inside body? script src patterns?
+    const scriptSrcs = (body.match(/<script[^>]+src=["']([^"']+)["']/gi) || []).slice(0, 200);
+    scriptSrcs.forEach(s => {
+      if (/cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare/i.test(s)) tech.add('Public CDN');
+    });
+  };
+
+  // Probe multiple URLs to maximize signature coverage
+  const urls = [`https://${domain}`, `https://www.${domain}`, `http://${domain}`, `https://${domain}/`];
+  for (const u of urls) {
+    try {
+      const r = await pFetch(u, 12000);
+      if (!r.ok) continue;
       const body = await r.text();
       const cookies = r.headers?.get('set-cookie') || '';
-      TECH_SIGNATURES.forEach(sig => {
-        if (sig.body && sig.body.test(body)) tech.add(sig.name);
-        if (sig.cookie && sig.cookie.test(cookies)) tech.add(sig.name);
-      });
-    }
-  } catch { /* */ }
-  // From www subdomain
-  try {
-    const r = await pFetch(`https://www.${domain}`, 10000);
-    if (r.ok) {
+      // Also re-check headers from this response
+      const respHeaders: string[] = [];
+      try { r.headers.forEach((v, k) => respHeaders.push(`${k}: ${v}`)); } catch { /* */ }
+      const headerStr2 = respHeaders.join('\n');
+      TECH_SIGNATURES.forEach(sig => { if (sig.header && sig.header.test(headerStr2)) tech.add(sig.name); });
+      fingerprint(body, cookies);
+    } catch { /* */ }
+  }
+
+  // Probe a few common tech-revealing endpoints
+  const techPaths = ['/robots.txt', '/.well-known/security.txt', '/humans.txt', '/sitemap.xml', '/wp-login.php', '/admin/', '/api/', '/graphql', '/.env', '/package.json'];
+  for (const p of techPaths) {
+    try {
+      const r = await pFetch(`https://${domain}${p}`, 6000);
+      if (!r.ok) continue;
       const body = await r.text();
-      TECH_SIGNATURES.forEach(sig => {
-        if (sig.body && sig.body.test(body)) tech.add(sig.name);
-      });
-    }
-  } catch { /* */ }
+      fingerprint(body, '');
+      // Heuristics by path
+      if (p === '/wp-login.php' && r.ok) tech.add('WordPress');
+      if (p === '/graphql' && /__schema|errors/i.test(body)) tech.add('GraphQL');
+      if (p === '/package.json' && /\"dependencies\"/.test(body)) tech.add('Node.js');
+    } catch { /* */ }
+  }
+
   return [...tech];
 }
 
@@ -1938,15 +2066,75 @@ export async function fetchWebArchiveFull(domain: string) {
   return out;
 }
 
+// ── c99.nl Subdomain Finder ──
+export async function fetchC99(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://subdomainfinder.c99.nl/scans/${new Date().toISOString().slice(0, 10)}/${domain}`, 20000);
+    const html = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'c99.nl' }); }
+    }
+  } catch { /* */ }
+  // Fallback to landing-page scan
+  if (!out.length) {
+    try {
+      const r = await pFetch(`https://subdomainfinder.c99.nl/?domain=${domain}`, 15000);
+      const html = await r.text();
+      const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+      let m;
+      while ((m = re.exec(html)) !== null) {
+        const s = m[1].toLowerCase();
+        if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'c99.nl' }); }
+      }
+    } catch { /* */ }
+  }
+  return out;
+}
+
+// ── Additional sources ──
+export async function fetchHudsonRock(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain?domain=${domain}`, 12000);
+    const d = await r.json();
+    (d.data?.employees_urls || d.urls || []).forEach((rec: any) => {
+      try {
+        const h = new URL(rec.url || rec).hostname.toLowerCase();
+        if (h && isValidSub(h, domain) && !seen.has(h)) { seen.add(h); out.push({ subdomain: h, ip: '', source: 'HudsonRock' }); }
+      } catch { /* */ }
+    });
+  } catch { /* */ }
+  return out;
+}
+
+export async function fetchDigitorus(domain: string) {
+  const seen = new Set<string>(), out: any[] = [];
+  try {
+    const r = await pFetch(`https://certdb.digitorus.com/?domain=${domain}`, 15000);
+    const html = await r.text();
+    const re = new RegExp('([a-z0-9][a-z0-9\\-\\.]*\\.' + domain.replace(/\./g, '\\.') + ')', 'gi');
+    let m;
+    while ((m = re.exec(html)) !== null) {
+      const s = m[1].toLowerCase();
+      if (isValidSub(s, domain) && !seen.has(s)) { seen.add(s); out.push({ subdomain: s, ip: '', source: 'Digitorus' }); }
+    }
+  } catch { /* */ }
+  return out;
+}
+
 export async function fetchGAU(domain: string): Promise<EndpointEntry[]> {
   const all: EndpointEntry[] = [];
   const seen = new Set<string>();
   try {
-    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=100000`, 60000);
+    const r = await pFetch(`https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=json&fl=original,statuscode&collapse=urlkey&limit=1000000`, 90000);
     const text = await r.text();
     if (text.startsWith('[')) {
       const data = JSON.parse(text);
-      for (let i = 1; i < data.length && all.length < 1000000; i++) {
+      for (let i = 1; i < data.length; i++) {
         const u = normUrl(data[i][0]);
         if (!u || isJunkUrl(u) || JUNK.test(u)) continue;
         const k = urlKey(u);
@@ -2051,6 +2239,9 @@ export async function runFullScan(
     { name: 'Riddler', fn: () => fetchRiddler(domain), id: 'riddler' },
     { name: 'Wayback Full', fn: () => fetchWebArchiveFull(domain), id: 'wbfull' },
     { name: 'DNSx Multi', fn: () => dnsxMultiQuery(domain), id: 'dnsx' },
+    { name: 'c99.nl', fn: () => fetchC99(domain), id: 'c99' },
+    { name: 'HudsonRock', fn: () => fetchHudsonRock(domain), id: 'hudson' },
+    { name: 'Digitorus', fn: () => fetchDigitorus(domain), id: 'digitorus' },
   ];
 
   const subJobs = subSources.filter(s => sources[s.id] !== false).map(s =>

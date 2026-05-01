@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import Oneliners from "./pages/Oneliners.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import FloatingPortfolio from "./components/FloatingPortfolio.tsx";
 
 const queryClient = new QueryClient();
 
@@ -20,6 +21,7 @@ const App = () => (
           <Route path="/oneliners" element={<Oneliners />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <FloatingPortfolio />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
