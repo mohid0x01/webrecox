@@ -419,10 +419,16 @@ const Index = () => {
             BugHunting OSINT Platform
           </div>
           <h1 className="hero-gradient text-[clamp(2.4rem,6vw,4.5rem)] font-bold leading-[1.05] tracking-[-0.04em] mb-3">
-            ☣︎ Recon 🗡<br />Engine v14.6
+            ☣︎ WebRecox 🗡<br />Recon Engine v15
           </h1>
-          <p className="text-muted-foreground max-w-[580px] mx-auto leading-[1.7] mb-5">
-            50+ OSINT sources · 42 scan phases · DNS multi-resolver · Port intel · JS secrets · DOM XSS · CORS · IDOR · Race · Cache Poison · CRLF · GraphQL · Nuclei · Dark Web · NO LIMITS
+          <div className="flex items-center justify-center gap-2 flex-wrap mb-4">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-primary/10 border border-primary/30 text-primary">by TeamCyberOps</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[hsl(var(--green))]/10 border border-[hsl(var(--green))]/30 text-[hsl(var(--green))]">v15.0 · NO LIMITS</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[hsl(var(--purple))]/10 border border-[hsl(var(--purple))]/30 text-[hsl(var(--purple))]">51 Tabs</span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[hsl(var(--teal))]/10 border border-[hsl(var(--teal))]/30 text-[hsl(var(--teal))]">170+ Oneliners</span>
+          </div>
+          <p className="text-muted-foreground max-w-[640px] mx-auto leading-[1.7] mb-5">
+            <span className="text-primary font-semibold">WebRecox</span> — 50+ OSINT sources · 42 scan phases · DNS multi-resolver · Port intel · JS Code Analyzer · DOM XSS · CORS · IDOR · Race · Cache Poison · CRLF · GraphQL · Nuclei · Threat Map · Dark Web · <span className="text-primary">NO LIMITS</span>
           </p>
         </div>
 
