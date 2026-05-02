@@ -1,100 +1,81 @@
-# ☣ TeamCyberOps Recon Engine v14.6
+# ☣ WebRecox — TeamCyberOps Recon Engine v15
 
-> **Browser-based OSINT & Bug Bounty Recon Platform**
-> React + TypeScript · Cloud-Backed · 50+ OSINT Sources · No Limits
+> **Browser-based OSINT & Bug-Bounty Recon Platform**
+> React 18 · TypeScript · Vite · Cloud-Backed · 50+ OSINT sources · 170+ Oneliners · **NO LIMITS**
 
-![image](https://github.com/user-attachments/assets/f94d873f-ebb9-43be-8a49-8522ac82d0ad)
+![banner](https://github.com/user-attachments/assets/f94d873f-ebb9-43be-8a49-8522ac82d0ad)
 
 **By [@mohidqx](https://github.com/mohidqx) · [TeamCyberOps](https://teamcyberops.vercel.app)**
+
+[![CI](https://github.com/mohidqx/TeamCyberOps-Recon/actions/workflows/ci.yml/badge.svg)](https://github.com/mohidqx/TeamCyberOps-Recon/actions)
+![License](https://img.shields.io/badge/license-MIT-amber)
+![Stack](https://img.shields.io/badge/stack-React%2018%20%C2%B7%20Vite%205%20%C2%B7%20TS-orange)
 
 ---
 
 ## ⚡ Quick Start
 
 ```bash
-# Clone and install
 git clone https://github.com/mohidqx/TeamCyberOps-Recon.git
 cd TeamCyberOps-Recon
-npm install
-
-# Start development server
+npm install --legacy-peer-deps
 npm run dev
 ```
 
-Open `http://localhost:5173`, enter a target domain (e.g. `tesla.com`), and click **Full Scan** or press `Ctrl + Enter`.
+Open `http://localhost:5173`, enter a target domain (e.g. `tesla.com`), and press **`Ctrl + Enter`** to launch a scan.
 
-> ✅ **For authorized security testing only.** Always have written permission before scanning any target.
+> ✅ **Authorised security testing only.** Always have written permission before scanning any target.
 
 ---
 
-## 🗂️ Feature Index
+## 🌟 What's new in v15
+
+- 🆕 **WebRecox** rebrand
+- 🧬 **JS Code Analyzer** — paste/upload JS to extract endpoints + classify bugs Critical / High / Medium / Low
+- 🗺 **Interactive Threat Map** powered by Leaflet.js + CartoDB
+- 📊 Animated **Risk Score gauge** with 12-point breakdown
+- 🔥 **Unlimited Heatmap** — every subdomain rendered with HSL gradient
+- 🔗 **Shareable scan links** + cloud-backed cache prompts
+- ⌨ **Keyboard shortcuts** — `Ctrl+Enter`, `Ctrl+E`, `1-9`
+- 📜 **170+ Oneliners** — favorites, severity-aware tag filters, CSV export, deep-link to scanner module
+- 🚀 Vercel deployment fixed (`--legacy-peer-deps`)
+
+See [**CHANGELOG.md**](./CHANGELOG.md) for the full history.
+
+---
+
+## 🗂 Feature Index
 
 | Category | Features |
 |----------|----------|
-| 🔍 Subdomains | crt.sh, HackerTarget, AnubisDB, RapidDNS, CertSpotter, OTX PassiveDNS, URLScan, ThreatMiner, Sonar, Wayback, BufferOver, ThreatCrowd, VirusTotal, DNSRepo, Riddler, DNS Bruteforce (500+ words), Permutation Engine |
-| 🌐 Endpoints | Wayback CDX, OTX URLs, CommonCrawl, URLScan URLs, Sitemap parse, robots.txt, GitHub Endpoints |
-| 🔐 JS & Secrets | 35+ secret patterns, DOM XSS sink detection, JS Code Analyzer (real endpoints, bug detection), JWT Analysis |
-| 🛡️ Vulnerabilities | CORS Misconfig, Nuclei Templates (30+), Content Discovery (200+ paths), SSTI/SQLi/LFI, HTTP Methods, Broken Link Hijacking, Dependency Confusion, IDOR, Race Conditions, Cache Poisoning, CRLF Injection, Host Header Injection |
-| 🧠 Intelligence | OTX Threat Intel, URLScan History, GitHub Code Leaks, ASN/BGP Recon, Email Security (SPF/DMARC/DKIM/MTA-STS/BIMI), Bug Bounty Detector, Dark Web OSINT, Breach Databases, Paste Sites, Exploit DB, Google Dorks (12 categories) |
-| 🗺️ Interactive Map | Leaflet.js threat map with color-coded IP markers, geolocation data, CVE/port overlays |
-| 📊 Reports | JSON, CSV, TXT, PDF, Burp Suite XML, Nuclei target list, Shareable URL, Scan Diff, Risk Score |
+| 🔍 Subdomains | crt.sh, HackerTarget, AnubisDB, RapidDNS, CertSpotter, OTX, URLScan, ThreatMiner, Sonar, Wayback, BufferOver, ThreatCrowd, VirusTotal, DNSRepo, Riddler, **subdomainfinder.c99.nl**, HudsonRock, Digitorus, DNS Bruteforce (500+ words), Permutations |
+| 🌐 Endpoints | Wayback CDX, OTX URLs, CommonCrawl, URLScan, Sitemap, robots.txt, GitHub leaks |
+| 🔐 JS & Secrets | 35+ secret patterns, DOM XSS sinks, **JS Code Analyzer**, JWT issues |
+| 🛡️ Vulnerabilities | CORS, IDOR, Race, Cache Poison, CRLF, Host Header Injection, Subdomain Takeover (29 fingerprints), Broken Link Hijack, Dependency Confusion, GraphQL introspection, HTTP method abuse, Nuclei templates (30+), Content Discovery (200+ paths), SSTI/SQLi/LFI |
+| 🧠 Intelligence | OTX, URLScan history, GitHub code leaks, ASN/BGP, Email security (SPF/DMARC/DKIM/MTA-STS/BIMI), Bug bounty detector, Dark Web OSINT, Breach DBs, Pastes, Exploit-DB, Google Dorks |
+| 🗺 Map | Leaflet.js dark threat map with colour-coded markers |
+| 📊 Reports | JSON · CSV · TXT · PDF · Burp XML · Nuclei list · Shareable URL · Diff · Risk Score |
+| ⚡ Oneliners | 170+ commands — favourites, tags, deep-links into scanner |
 
 ---
 
-## 🧩 All Tabs
+## ⌨ Keyboard Shortcuts
 
-### 🔴 Subdomains (`Subs`)
-Aggregates results from 17+ passive sources simultaneously. Each subdomain shows IP, HTTP status, open ports, geolocation, CNAME chain, source badges. Smart filtering, export, and pagination.
-
-### 🟣 DNS
-Multi-resolver DNS (Google, Cloudflare, Quad9) for A, AAAA, MX, NS, TXT, CNAME, SOA, CAA records. Deduplication with resolver confirmation.
-
-### 🟣 Ports
-Shodan InternetDB (no API key needed) for ports, CVEs, and vulnerabilities per IP. Dangerous ports highlighted.
-
-### 🟢 Endpoints
-8 sources, deduplication, type classification (JS, PHP, API, Admin, Config, Auth).
-
-### 🟡 JS Files & JS Code Analyzer
-Lists all `.js` files. **JS Code Analyzer** scans for real API endpoints, security bugs (Critical/High/Medium/Low), hardcoded credentials, and dangerous patterns.
-
-### 🔑 Secrets
-35+ secret pattern types with strict validation to minimize false positives. AWS, Google, GitHub, Stripe, OpenAI, Anthropic, Discord, Slack, and more.
-
-### 🗺️ Threat Map
-Interactive Leaflet.js dark world map with color-coded markers:
-- 🔴 Red = CVEs or dangerous ports
-- 🟢 Green = CDN edge nodes
-- 🟡 Amber = normal hosts
-
-### ⚠️ Vulnerability Scanners
-CORS Misconfig, IDOR, Race Conditions, Cache Poisoning, CRLF Injection, Host Header Injection, Subdomain Takeover (29 fingerprints), GraphQL Introspection, HTTP Methods.
-
-### 📊 Risk Score
-Composite risk score (0–100) with breakdown by category. Animated gauge visualization.
-
-### 🔥 Heatmap
-Risk heatmap of ALL subdomains (no limits) with color-coded blocks.
-
-### 🔗 Shareable Links
-Share scan results via URL. Recipients see full results without re-scanning.
-
-### ⌨️ Keyboard Shortcuts
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl + Enter` | Start scan |
 | `Ctrl + E` | Export JSON |
-| `1-9` | Switch tabs |
+| `1-9` | Switch tabs within active category |
 
 ---
 
-## 🏗️ Tech Stack
+## 🏗 Tech Stack
 
 - **Frontend**: React 18 + TypeScript + Vite 5
-- **Styling**: Tailwind CSS v3 with custom amber/dark design system
-- **Backend**: Lovable Cloud (Supabase) for scan persistence
-- **Maps**: Leaflet.js with CartoDB dark tiles
-- **Audio**: Web Audio API for scan sound effects
+- **Styling**: Tailwind CSS v3 (dark / amber design system, semantic HSL tokens)
+- **Backend**: Lovable Cloud (Supabase) — scan persistence + share links
+- **Maps**: Leaflet.js with CartoDB Dark tiles
+- **Audio**: Web Audio API
 - **State**: React hooks + React Query
 - **UI**: shadcn/ui + Radix primitives
 
@@ -105,57 +86,69 @@ Share scan results via URL. Recipients see full results without re-scanning.
 ```
 src/
 ├── pages/
-│   ├── Index.tsx          # Main recon dashboard (50+ tabs)
-│   └── Oneliners.tsx      # Bug bounty command library
+│   ├── Index.tsx          # Main recon dashboard (51 tabs)
+│   └── Oneliners.tsx      # Oneliners library + JS Analyzer modal
 ├── components/
-│   └── ThreatMap.tsx      # Leaflet.js interactive map
+│   ├── ThreatMap.tsx      # Leaflet.js interactive map
+│   └── FloatingPortfolio.tsx
 ├── lib/
-│   ├── reconEngine.ts     # Full scanning engine (2400+ lines)
-│   ├── exportUtils.ts     # Export (JSON/CSV/TXT/PDF/Burp/Nuclei)
-│   └── soundUtils.ts      # Web Audio API sounds
+│   ├── reconEngine.ts     # Full scanning engine (2700+ lines)
+│   ├── exportUtils.ts     # JSON / CSV / TXT / PDF / Burp XML / Nuclei
+│   └── soundUtils.ts      # Web Audio API
 ├── data/
-│   └── onelinersData.ts   # 100+ bug bounty commands
-└── index.css              # Design system tokens
+│   └── onelinersData.ts   # 170+ commands + module mapping
+└── index.css              # Design tokens
+```
+
+---
+
+## 🚀 Deploy on Vercel
+
+This repo ships with [`vercel.json`](./vercel.json) — just import the repo on Vercel, no extra config needed.
+
+```json
+{
+  "buildCommand": "npm install --legacy-peer-deps && npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "vite",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
 ```
 
 ---
 
 ## 🔒 Security & Ethics
 
-- **Authorization**: Only scan targets you have explicit written permission to test
-- **Rate Limiting**: Built-in delays between requests to avoid overwhelming targets
-- **No Server**: All scanning happens client-side via browser fetch
-- **Data Storage**: Scan results saved to cloud for caching and sharing
-- **Responsible Disclosure**: Follow coordinated disclosure practices
+- **Authorisation**: scan only targets you have explicit written permission to test
+- **Rate-limiting**: built-in delays between requests
+- **Client-side**: scanning runs in the browser via fetch + a rotating CORS proxy
+- **Cloud cache**: results saved for sharing/diffing only
+- **Responsible disclosure**: please follow coordinated disclosure practices
+
+See [SECURITY.md](./SECURITY.md) for vulnerability reporting.
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+PRs are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow, plus how to add new OSINT sources / vuln modules.
 
 ---
 
 ## 📄 License
 
-MIT License — see [LICENSE](LICENSE) for details.
+[MIT](./LICENSE) — © 2025-2026 TeamCyberOps / @mohidqx
 
 ---
 
 ## 🔗 Links
 
-- **Portfolio**: [teamcyberops.vercel.app](https://teamcyberops.vercel.app)
-- **GitHub**: [@mohidqx](https://github.com/mohidqx)
-- **Oneliners**: Built-in at `/oneliners` route
-
----
+- 🌐 Portfolio — [teamcyberops.vercel.app](https://teamcyberops.vercel.app)
+- 🐙 GitHub — [@mohidqx](https://github.com/mohidqx)
+- 📜 Oneliners — built-in at `/oneliners`
 
 <div align="center">
-  <strong>© 2025 TeamCyberOps — For authorized penetration testing only</strong>
-  <br/>
-  <a href="https://github.com/mohidqx">github.com/mohidqx</a>
+
+**WebRecox** · For authorised penetration testing only · `github.com/mohidqx`
+
 </div>
