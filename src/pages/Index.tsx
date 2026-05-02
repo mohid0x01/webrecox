@@ -149,6 +149,12 @@ const Index = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('share');
+    const deepTab = params.get('tab');
+    if (deepTab && ALL_TABS.some(t => t.id === deepTab)) {
+      setActiveTab(deepTab as TabId);
+      const found = ALL_TABS.find(t => t.id === deepTab);
+      if (found) setActiveCat(found.cat);
+    }
     if (sid) {
       setShareId(sid);
       (async () => {
