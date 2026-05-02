@@ -383,8 +383,8 @@ const Index = () => {
         <div className="max-w-[1300px] mx-auto px-6 flex items-center gap-3 h-[58px]">
           <a href="/" className="flex items-center gap-2.5 no-underline shrink-0" onClick={e => { e.preventDefault(); setScanState(createScanState()); setTarget(''); }}>
             <img src="https://github.com/mohidqx.png" alt="Logo" className="w-[34px] h-[34px] rounded-full border-2 border-primary/40 drop-shadow-[0_0_10px_hsla(38,92%,50%,0.5)]" />
-            <span className="brand-gradient text-[17px] font-extrabold tracking-[0.06em] uppercase">TeamCyberOps</span>
-            <span className="font-mono text-[8.5px] font-bold tracking-[0.1em] px-[7px] py-[2px] rounded-full bg-primary/10 border border-primary/25 text-primary uppercase">RECON v14.6</span>
+            <span className="brand-gradient text-[17px] font-extrabold tracking-[0.06em] uppercase">WebRecox</span>
+            <span className="font-mono text-[8.5px] font-bold tracking-[0.1em] px-[7px] py-[2px] rounded-full bg-primary/10 border border-primary/25 text-primary uppercase">by TeamCyberOps</span>
           </a>
           <div className="flex-1" />
           <button onClick={() => setSoundEnabled(!soundEnabled)} className={`p-1.5 rounded-lg border transition-all ${soundEnabled ? 'border-primary/25 text-primary' : 'border-border text-muted-foreground'}`}>
