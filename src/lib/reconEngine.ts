@@ -122,12 +122,41 @@ export async function pFetch(url: string, ms = 20000): Promise<Response> {
   return new Response('', { status: 0 }) as any;
 }
 
+/** Resilient fetch: tries direct first, then falls back through proxies on CORS/network errors.
+ *  Used by all vulnerability modules so they don't silently die on blocked origins. */
 async function sf(url: string, opts?: RequestInit, ms = 15000) {
+  // Direct attempt
   try {
-    return await fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
-  } catch {
-    return { ok: false, status: 0, json: async () => ({}), text: async () => '', headers: new Headers() } as any;
+    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
+    if (r.status > 0) return r;
+  } catch { /* fall through to proxies */ }
+
+  // GET-only fallbacks (proxies don't support custom methods/headers reliably)
+  const method = (opts?.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD') {
+    for (const proxy of PROXIES.slice(1)) { // skip the identity proxy (already tried)
+      try {
+        const r = await fetch(proxy(url), { signal: AbortSignal.timeout(Math.min(ms, 12000)) });
+        if (r.status > 0) return r;
+      } catch { /* next */ }
+    }
   }
+
+  return { ok: false, status: 0, json: async () => ({}), text: async () => '', headers: new Headers() } as any;
+}
+
+/** Concurrency-limited Promise.all — prevents 1000s of parallel fetches that DoS the proxies. */
+export async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      try { out[i] = await fn(items[i], i); } catch { out[i] = undefined as any; }
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
@@ -926,21 +955,21 @@ export async function scanDOMXSS(jsFiles: EndpointEntry[]): Promise<DOMXSSFindin
 
 export async function scanCORS(hosts: string[]): Promise<CORSFinding[]> {
   const findings: CORSFinding[] = [];
-  // NO LIMIT
-  for (const host of hosts) {
-    const origins = ['https://evil.com', 'null', `https://${host}.evil.com`];
+  const origins = ['https://evil.com', 'null'];
+  // Concurrency-limited so we don't drown the proxies
+  await mapPool(hosts, 8, async (host) => {
     for (const origin of origins) {
       try {
-        const r = await sf(`https://${host}`, { headers: { 'Origin': origin } }, 5000);
+        const r = await sf(`https://${host}`, { headers: { 'Origin': origin } as any }, 6000);
+        if (!r.headers || r.status === 0) continue;
         const acao = r.headers.get('access-control-allow-origin') || '';
         const acac = r.headers.get('access-control-allow-credentials') || '';
         if (acao === '*') findings.push({ host, type: 'Wildcard CORS', acao, acac, origin, sev: acac === 'true' ? 'HIGH' : 'MEDIUM' });
         else if (acao === origin) findings.push({ host, type: 'Reflected Origin', acao, acac, origin, sev: 'HIGH' });
-        else if (acao === 'null') findings.push({ host, type: 'Null Origin Accepted', acao, acac, origin, sev: 'MEDIUM' });
+        else if (acao === 'null' && origin === 'null') findings.push({ host, type: 'Null Origin Accepted', acao, acac, origin, sev: 'MEDIUM' });
       } catch { /* */ }
     }
-    await sleep(100);
-  }
+  });
   return findings;
 }
 
@@ -1169,8 +1198,8 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
   const idParams = ['id', 'user_id', 'uid', 'account_id', 'order_id', 'invoice_id', 'document_id', 'file_id', 'record_id', 'item_id', 'product_id', 'customer_id', 'member_id'];
   const candidates = eps.filter(ep => {
     try { const u = new URL(ep.url); return Array.from(u.searchParams.keys()).some(k => idParams.includes(k.toLowerCase())); } catch { return false; }
-  });
-  for (const ep of candidates) {
+  }).slice(0, 500); // safety cap so a giant endpoint list doesn't deadlock the run
+  await mapPool(candidates, 8, async (ep) => {
     try {
       const u = new URL(ep.url);
       for (const [k, v] of u.searchParams.entries()) {
@@ -1180,20 +1209,19 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
         for (const testVal of tests) {
           const tu = new URL(ep.url); tu.searchParams.set(k, String(testVal));
           try {
-            const r = await sf(tu.toString(), {}, 5000);
+            const r = await sf(tu.toString(), {}, 6000);
             if (r.ok && r.status === 200) {
               const body = await r.text();
-              if (body.length > 100 && !body.toLowerCase().includes('unauthorized') && !body.toLowerCase().includes('forbidden')) {
+              if (body.length > 100 && !body.toLowerCase().includes('unauthorized') && !body.toLowerCase().includes('forbidden') && !body.toLowerCase().includes('login required')) {
                 findings.push({ url: ep.url, param: k, original: origVal, tested: testVal, status: r.status, size: body.length, sev: 'HIGH', desc: `IDOR candidate: ?${k}=${testVal} returned ${r.status} (${body.length} bytes)` });
                 break;
               }
             }
           } catch { /* */ }
-          await sleep(100);
         }
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 
@@ -1203,18 +1231,17 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
 
 export async function detectRaceConditions(eps: EndpointEntry[]): Promise<RaceFinding[]> {
   const findings: RaceFinding[] = [];
-  const candidates = eps.filter(ep => /reset|redeem|coupon|discount|referral|signup|register|verify|2fa|otp|transfer|withdraw|purchase|buy|checkout/i.test(ep.url));
-  for (const ep of candidates) {
+  const candidates = eps.filter(ep => /reset|redeem|coupon|discount|referral|signup|register|verify|2fa|otp|transfer|withdraw|purchase|buy|checkout/i.test(ep.url)).slice(0, 200);
+  await mapPool(candidates, 4, async (ep) => {
     try {
-      const responses = await Promise.allSettled(Array.from({ length: 10 }, () => sf(ep.url, { method: 'GET' }, 4000)));
+      const responses = await Promise.allSettled(Array.from({ length: 10 }, () => sf(ep.url, { method: 'GET' } as any, 5000)));
       const statuses = responses.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<any>).value.status);
-      const nonRateLimited = statuses.filter(s => s !== 429).length;
+      const nonRateLimited = statuses.filter(s => s > 0 && s !== 429).length;
       if (nonRateLimited >= 8) {
         findings.push({ url: ep.url, concurrent: 10, success: nonRateLimited, sev: 'HIGH', desc: `${nonRateLimited}/10 concurrent requests succeeded without rate limiting` });
       }
     } catch { /* */ }
-    await sleep(500);
-  }
+  });
   return findings;
 }
 
@@ -1228,10 +1255,11 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
     { 'X-Forwarded-Host': 'evil.com' }, { 'X-Original-URL': '/admin' }, { 'X-Rewrite-URL': '/admin' },
     { 'X-Host': 'evil.com' }, { 'X-Forwarded-Server': 'evil.com' }, { 'Forwarded': 'host=evil.com' },
   ];
-  for (const host of hosts) {
+  await mapPool(hosts, 6, async (host) => {
     for (const header of POISON_HEADERS) {
       try {
-        const r = await sf(`https://${host}`, { headers: header as any }, 5000);
+        const r = await sf(`https://${host}`, { headers: header as any }, 6000);
+        if (r.status === 0) continue;
         const body = await r.text();
         const headerKey = Object.keys(header)[0];
         const headerVal = (header as any)[headerKey];
@@ -1239,9 +1267,8 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
           findings.push({ host, header: headerKey, value: headerVal, reflected: true, sev: 'HIGH', desc: 'Header value reflected in response — cache poisoning possible' });
         }
       } catch { /* */ }
-      await sleep(50);
     }
-  }
+  });
   return findings;
 }
 
@@ -1252,25 +1279,24 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
 export async function scanCRLF(eps: EndpointEntry[]): Promise<CRLFFinding[]> {
   const findings: CRLFFinding[] = [];
   const PAYLOADS = ['%0d%0aSet-Cookie:crlftest=1', '%0aSet-Cookie:crlftest=1', '%0d%0aLocation:https://evil.com'];
-  const candidates = eps.filter(ep => { try { return new URL(ep.url).searchParams.size > 0; } catch { return false; } });
-  for (const ep of candidates) {
+  const candidates = eps.filter(ep => { try { return new URL(ep.url).searchParams.size > 0; } catch { return false; } }).slice(0, 500);
+  await mapPool(candidates, 8, async (ep) => {
     try {
       const u = new URL(ep.url);
       const firstParam = Array.from(u.searchParams.entries())[0];
-      if (!firstParam) continue;
+      if (!firstParam) return;
       for (const payload of PAYLOADS) {
         const tu = new URL(ep.url); tu.searchParams.set(firstParam[0], firstParam[1] + payload);
         try {
-          const r = await sf(tu.toString(), { redirect: 'manual' } as any, 5000);
+          const r = await sf(tu.toString(), { redirect: 'manual' } as any, 6000);
           const cookies = r.headers.get('set-cookie') || '';
           if (cookies.includes('crlftest=1')) {
             findings.push({ url: ep.url, param: firstParam[0], payload, sev: 'HIGH', desc: 'CRLF injection confirmed — Set-Cookie header injected' });
           }
         } catch { /* */ }
-        await sleep(50);
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 
@@ -1280,15 +1306,15 @@ export async function scanCRLF(eps: EndpointEntry[]): Promise<CRLFFinding[]> {
 
 export async function scanHostHeaderInjection(eps: EndpointEntry[]): Promise<HostInjectionFinding[]> {
   const findings: HostInjectionFinding[] = [];
-  const resetEps = eps.filter(ep => /password.reset|forgot.password|reset|verify|confirm/i.test(ep.url));
-  for (const ep of resetEps) {
+  const resetEps = eps.filter(ep => /password.reset|forgot.password|reset|verify|confirm/i.test(ep.url)).slice(0, 200);
+  await mapPool(resetEps, 6, async (ep) => {
     try {
-      const r = await sf(ep.url, { headers: { 'Host': 'evil.com', 'X-Forwarded-Host': 'evil.com' } as any }, 5000);
+      const r = await sf(ep.url, { headers: { 'X-Forwarded-Host': 'evil.com', 'X-Host': 'evil.com' } as any }, 6000);
+      if (r.status === 0) return;
       const body = await r.text();
       if (body.includes('evil.com')) findings.push({ url: ep.url, sev: 'HIGH', desc: 'Host header reflected — password reset link hijacking possible' });
     } catch { /* */ }
-    await sleep(100);
-  }
+  });
   return findings;
 }
 
@@ -1408,19 +1434,25 @@ export function scanJWTs(secrets: SecretFinding[]): JWTFinding[] {
 
 export async function scanGraphQL(hosts: string[]): Promise<GraphQLFinding[]> {
   const findings: GraphQLFinding[] = [];
-  const paths = ['/graphql', '/api/graphql', '/graphiql', '/playground', '/altair'];
-  for (const host of hosts) {
+  const paths = ['/graphql', '/api/graphql', '/v1/graphql', '/graphiql', '/playground', '/altair'];
+  await mapPool(hosts, 6, async (host) => {
     for (const path of paths) {
       try {
-        const r = await sf(`https://${host}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ __schema { types { name } } }' }) }, 5000);
-        if (r.ok) {
-          const d = await r.json();
-          const types = d?.data?.__schema?.types || [];
-          if (types.length > 0) findings.push({ host, url: `https://${host}${path}`, typeCount: types.length, types: types.slice(0, 20) });
+        const r = await sf(`https://${host}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' } as any,
+          body: JSON.stringify({ query: '{ __schema { types { name } } }' }),
+        }, 6000);
+        if (!r.ok) continue;
+        const d = await r.json().catch(() => ({}));
+        const types = d?.data?.__schema?.types || [];
+        if (types.length > 0) {
+          findings.push({ host, url: `https://${host}${path}`, typeCount: types.length, types: types.slice(0, 50) });
+          break; // one introspection per host is enough
         }
       } catch { /* */ }
     }
-  }
+  });
   return findings;
 }
 
@@ -1431,16 +1463,17 @@ export async function scanGraphQL(hosts: string[]): Promise<GraphQLFinding[]> {
 export async function scanHTTPMethods(hosts: string[]): Promise<MethodsFinding[]> {
   const findings: MethodsFinding[] = [];
   const dangerous = ['PUT', 'DELETE', 'PATCH', 'TRACE', 'CONNECT'];
-  for (const host of hosts) {
+  await mapPool(hosts, 10, async (host) => {
     try {
-      const r = await sf(`https://${host}`, { method: 'OPTIONS' }, 5000);
-      const allow = r.headers.get('allow') || '';
+      const r = await sf(`https://${host}`, { method: 'OPTIONS' } as any, 6000);
+      if (r.status === 0) return;
+      const allow = r.headers.get('allow') || r.headers.get('access-control-allow-methods') || '';
       if (allow) {
         const dangerousMethods = dangerous.filter(m => allow.toUpperCase().includes(m));
         if (dangerousMethods.length) findings.push({ host, url: `https://${host}`, allow, dangerous: dangerousMethods, sev: 'MEDIUM' });
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 

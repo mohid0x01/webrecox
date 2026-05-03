@@ -145,25 +145,46 @@ const Index = () => {
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
-  // Load shared scan from URL
+  // Load shared view / target from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('share');
     const deepTab = params.get('tab');
+    const prefill = params.get('target');
+
     if (deepTab && ALL_TABS.some(t => t.id === deepTab)) {
       setActiveTab(deepTab as TabId);
       const found = ALL_TABS.find(t => t.id === deepTab);
       if (found) setActiveCat(found.cat);
     }
+    if (prefill) {
+      setTarget(prefill);
+      toast.info(`Target prefilled: ${prefill}`, { duration: 2500 });
+    }
+
     if (sid) {
       setShareId(sid);
       (async () => {
+        // New shared_views table (short share IDs)
+        const { data: sv } = await supabase.from('shared_views').select('payload, target_domain, view_count').eq('share_id', sid).maybeSingle();
+        if (sv?.payload) {
+          const p = sv.payload as any;
+          if (p.scan_data) setScanState({ ...createScanState(), ...p.scan_data } as ScanState);
+          if (typeof p.filter === 'string') setFilter(p.filter);
+          if (p.activeCat) setActiveCat(p.activeCat);
+          if (p.activeTab && ALL_TABS.some(t => t.id === p.activeTab)) setActiveTab(p.activeTab);
+          if (sv.target_domain) setTarget(sv.target_domain);
+          supabase.from('shared_views').update({ view_count: (sv.view_count || 0) + 1 }).eq('share_id', sid).then(() => {});
+          toast.success(`Loaded shared view: ${sv.target_domain || 'session'}`);
+          return;
+        }
+        // Legacy fallback: full scan_results UUID
         const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', sid).maybeSingle();
         if (data?.scan_data) {
           setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState);
           setTarget(data.domain || '');
           toast.success(`Loaded shared scan for ${data.domain}`);
-        } else toast.error('Shared scan not found');
+        } else toast.error('Shared view not found');
       })();
     }
     loadHistory();
@@ -306,13 +327,27 @@ const Index = () => {
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!', { duration: 1000 }); };
 
   const shareScan = async () => {
-    if (!scanState.domain) { toast.error('No scan to share'); return; }
-    const { data } = await supabase.from('scan_results').select('id').eq('domain', scanState.domain.toLowerCase()).order('created_at', { ascending: false }).limit(1);
-    if (data?.[0]) {
-      const url = `${window.location.origin}/?share=${data[0].id}`;
-      navigator.clipboard.writeText(url);
-      toast.success('Share link copied! Recipients will see full results.', { duration: 5000 });
-    } else toast.error('Save a scan first');
+    if (!scanState.domain && !target) { toast.error('Run or load a scan first'); return; }
+    // Generate short share ID (8 chars, base36)
+    const shortId = (Math.random().toString(36).slice(2, 6) + Date.now().toString(36).slice(-4)).toLowerCase();
+    const payload = {
+      scan_data: scanState,
+      filter,
+      activeCat,
+      activeTab,
+      sources,
+      created_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('shared_views').insert({
+      share_id: shortId,
+      kind: 'recon',
+      target_domain: scanState.domain || target,
+      payload: payload as any,
+    });
+    if (error) { toast.error('Could not create share link: ' + error.message); return; }
+    const url = `${window.location.origin}/?share=${shortId}`;
+    try { await navigator.clipboard.writeText(url); } catch { /* */ }
+    toast.success(`Share link copied: ${url}`, { duration: 6000 });
   };
 
   const filteredTabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
