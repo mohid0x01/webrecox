@@ -955,21 +955,21 @@ export async function scanDOMXSS(jsFiles: EndpointEntry[]): Promise<DOMXSSFindin
 
 export async function scanCORS(hosts: string[]): Promise<CORSFinding[]> {
   const findings: CORSFinding[] = [];
-  // NO LIMIT
-  for (const host of hosts) {
-    const origins = ['https://evil.com', 'null', `https://${host}.evil.com`];
+  const origins = ['https://evil.com', 'null'];
+  // Concurrency-limited so we don't drown the proxies
+  await mapPool(hosts, 8, async (host) => {
     for (const origin of origins) {
       try {
-        const r = await sf(`https://${host}`, { headers: { 'Origin': origin } }, 5000);
+        const r = await sf(`https://${host}`, { headers: { 'Origin': origin } as any }, 6000);
+        if (!r.headers || r.status === 0) continue;
         const acao = r.headers.get('access-control-allow-origin') || '';
         const acac = r.headers.get('access-control-allow-credentials') || '';
         if (acao === '*') findings.push({ host, type: 'Wildcard CORS', acao, acac, origin, sev: acac === 'true' ? 'HIGH' : 'MEDIUM' });
         else if (acao === origin) findings.push({ host, type: 'Reflected Origin', acao, acac, origin, sev: 'HIGH' });
-        else if (acao === 'null') findings.push({ host, type: 'Null Origin Accepted', acao, acac, origin, sev: 'MEDIUM' });
+        else if (acao === 'null' && origin === 'null') findings.push({ host, type: 'Null Origin Accepted', acao, acac, origin, sev: 'MEDIUM' });
       } catch { /* */ }
     }
-    await sleep(100);
-  }
+  });
   return findings;
 }
 
@@ -1437,19 +1437,25 @@ export function scanJWTs(secrets: SecretFinding[]): JWTFinding[] {
 
 export async function scanGraphQL(hosts: string[]): Promise<GraphQLFinding[]> {
   const findings: GraphQLFinding[] = [];
-  const paths = ['/graphql', '/api/graphql', '/graphiql', '/playground', '/altair'];
-  for (const host of hosts) {
+  const paths = ['/graphql', '/api/graphql', '/v1/graphql', '/graphiql', '/playground', '/altair'];
+  await mapPool(hosts, 6, async (host) => {
     for (const path of paths) {
       try {
-        const r = await sf(`https://${host}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: '{ __schema { types { name } } }' }) }, 5000);
-        if (r.ok) {
-          const d = await r.json();
-          const types = d?.data?.__schema?.types || [];
-          if (types.length > 0) findings.push({ host, url: `https://${host}${path}`, typeCount: types.length, types: types.slice(0, 20) });
+        const r = await sf(`https://${host}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' } as any,
+          body: JSON.stringify({ query: '{ __schema { types { name } } }' }),
+        }, 6000);
+        if (!r.ok) continue;
+        const d = await r.json().catch(() => ({}));
+        const types = d?.data?.__schema?.types || [];
+        if (types.length > 0) {
+          findings.push({ host, url: `https://${host}${path}`, typeCount: types.length, types: types.slice(0, 50) });
+          break; // one introspection per host is enough
         }
       } catch { /* */ }
     }
-  }
+  });
   return findings;
 }
 
@@ -1460,16 +1466,17 @@ export async function scanGraphQL(hosts: string[]): Promise<GraphQLFinding[]> {
 export async function scanHTTPMethods(hosts: string[]): Promise<MethodsFinding[]> {
   const findings: MethodsFinding[] = [];
   const dangerous = ['PUT', 'DELETE', 'PATCH', 'TRACE', 'CONNECT'];
-  for (const host of hosts) {
+  await mapPool(hosts, 10, async (host) => {
     try {
-      const r = await sf(`https://${host}`, { method: 'OPTIONS' }, 5000);
-      const allow = r.headers.get('allow') || '';
+      const r = await sf(`https://${host}`, { method: 'OPTIONS' } as any, 6000);
+      if (r.status === 0) return;
+      const allow = r.headers.get('allow') || r.headers.get('access-control-allow-methods') || '';
       if (allow) {
         const dangerousMethods = dangerous.filter(m => allow.toUpperCase().includes(m));
         if (dangerousMethods.length) findings.push({ host, url: `https://${host}`, allow, dangerous: dangerousMethods, sev: 'MEDIUM' });
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 
