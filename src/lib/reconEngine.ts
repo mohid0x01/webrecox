@@ -1198,8 +1198,8 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
   const idParams = ['id', 'user_id', 'uid', 'account_id', 'order_id', 'invoice_id', 'document_id', 'file_id', 'record_id', 'item_id', 'product_id', 'customer_id', 'member_id'];
   const candidates = eps.filter(ep => {
     try { const u = new URL(ep.url); return Array.from(u.searchParams.keys()).some(k => idParams.includes(k.toLowerCase())); } catch { return false; }
-  });
-  for (const ep of candidates) {
+  }).slice(0, 500); // safety cap so a giant endpoint list doesn't deadlock the run
+  await mapPool(candidates, 8, async (ep) => {
     try {
       const u = new URL(ep.url);
       for (const [k, v] of u.searchParams.entries()) {
@@ -1209,20 +1209,19 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
         for (const testVal of tests) {
           const tu = new URL(ep.url); tu.searchParams.set(k, String(testVal));
           try {
-            const r = await sf(tu.toString(), {}, 5000);
+            const r = await sf(tu.toString(), {}, 6000);
             if (r.ok && r.status === 200) {
               const body = await r.text();
-              if (body.length > 100 && !body.toLowerCase().includes('unauthorized') && !body.toLowerCase().includes('forbidden')) {
+              if (body.length > 100 && !body.toLowerCase().includes('unauthorized') && !body.toLowerCase().includes('forbidden') && !body.toLowerCase().includes('login required')) {
                 findings.push({ url: ep.url, param: k, original: origVal, tested: testVal, status: r.status, size: body.length, sev: 'HIGH', desc: `IDOR candidate: ?${k}=${testVal} returned ${r.status} (${body.length} bytes)` });
                 break;
               }
             }
           } catch { /* */ }
-          await sleep(100);
         }
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 
@@ -1232,18 +1231,17 @@ export async function scanIDOR(eps: EndpointEntry[]): Promise<IDORFinding[]> {
 
 export async function detectRaceConditions(eps: EndpointEntry[]): Promise<RaceFinding[]> {
   const findings: RaceFinding[] = [];
-  const candidates = eps.filter(ep => /reset|redeem|coupon|discount|referral|signup|register|verify|2fa|otp|transfer|withdraw|purchase|buy|checkout/i.test(ep.url));
-  for (const ep of candidates) {
+  const candidates = eps.filter(ep => /reset|redeem|coupon|discount|referral|signup|register|verify|2fa|otp|transfer|withdraw|purchase|buy|checkout/i.test(ep.url)).slice(0, 200);
+  await mapPool(candidates, 4, async (ep) => {
     try {
-      const responses = await Promise.allSettled(Array.from({ length: 10 }, () => sf(ep.url, { method: 'GET' }, 4000)));
+      const responses = await Promise.allSettled(Array.from({ length: 10 }, () => sf(ep.url, { method: 'GET' } as any, 5000)));
       const statuses = responses.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<any>).value.status);
-      const nonRateLimited = statuses.filter(s => s !== 429).length;
+      const nonRateLimited = statuses.filter(s => s > 0 && s !== 429).length;
       if (nonRateLimited >= 8) {
         findings.push({ url: ep.url, concurrent: 10, success: nonRateLimited, sev: 'HIGH', desc: `${nonRateLimited}/10 concurrent requests succeeded without rate limiting` });
       }
     } catch { /* */ }
-    await sleep(500);
-  }
+  });
   return findings;
 }
 
@@ -1257,10 +1255,11 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
     { 'X-Forwarded-Host': 'evil.com' }, { 'X-Original-URL': '/admin' }, { 'X-Rewrite-URL': '/admin' },
     { 'X-Host': 'evil.com' }, { 'X-Forwarded-Server': 'evil.com' }, { 'Forwarded': 'host=evil.com' },
   ];
-  for (const host of hosts) {
+  await mapPool(hosts, 6, async (host) => {
     for (const header of POISON_HEADERS) {
       try {
-        const r = await sf(`https://${host}`, { headers: header as any }, 5000);
+        const r = await sf(`https://${host}`, { headers: header as any }, 6000);
+        if (r.status === 0) continue;
         const body = await r.text();
         const headerKey = Object.keys(header)[0];
         const headerVal = (header as any)[headerKey];
@@ -1268,9 +1267,8 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
           findings.push({ host, header: headerKey, value: headerVal, reflected: true, sev: 'HIGH', desc: 'Header value reflected in response — cache poisoning possible' });
         }
       } catch { /* */ }
-      await sleep(50);
     }
-  }
+  });
   return findings;
 }
 
@@ -1281,25 +1279,24 @@ export async function probeCachePoisoning(hosts: string[]): Promise<CachePoisonF
 export async function scanCRLF(eps: EndpointEntry[]): Promise<CRLFFinding[]> {
   const findings: CRLFFinding[] = [];
   const PAYLOADS = ['%0d%0aSet-Cookie:crlftest=1', '%0aSet-Cookie:crlftest=1', '%0d%0aLocation:https://evil.com'];
-  const candidates = eps.filter(ep => { try { return new URL(ep.url).searchParams.size > 0; } catch { return false; } });
-  for (const ep of candidates) {
+  const candidates = eps.filter(ep => { try { return new URL(ep.url).searchParams.size > 0; } catch { return false; } }).slice(0, 500);
+  await mapPool(candidates, 8, async (ep) => {
     try {
       const u = new URL(ep.url);
       const firstParam = Array.from(u.searchParams.entries())[0];
-      if (!firstParam) continue;
+      if (!firstParam) return;
       for (const payload of PAYLOADS) {
         const tu = new URL(ep.url); tu.searchParams.set(firstParam[0], firstParam[1] + payload);
         try {
-          const r = await sf(tu.toString(), { redirect: 'manual' } as any, 5000);
+          const r = await sf(tu.toString(), { redirect: 'manual' } as any, 6000);
           const cookies = r.headers.get('set-cookie') || '';
           if (cookies.includes('crlftest=1')) {
             findings.push({ url: ep.url, param: firstParam[0], payload, sev: 'HIGH', desc: 'CRLF injection confirmed — Set-Cookie header injected' });
           }
         } catch { /* */ }
-        await sleep(50);
       }
     } catch { /* */ }
-  }
+  });
   return findings;
 }
 
@@ -1309,15 +1306,15 @@ export async function scanCRLF(eps: EndpointEntry[]): Promise<CRLFFinding[]> {
 
 export async function scanHostHeaderInjection(eps: EndpointEntry[]): Promise<HostInjectionFinding[]> {
   const findings: HostInjectionFinding[] = [];
-  const resetEps = eps.filter(ep => /password.reset|forgot.password|reset|verify|confirm/i.test(ep.url));
-  for (const ep of resetEps) {
+  const resetEps = eps.filter(ep => /password.reset|forgot.password|reset|verify|confirm/i.test(ep.url)).slice(0, 200);
+  await mapPool(resetEps, 6, async (ep) => {
     try {
-      const r = await sf(ep.url, { headers: { 'Host': 'evil.com', 'X-Forwarded-Host': 'evil.com' } as any }, 5000);
+      const r = await sf(ep.url, { headers: { 'X-Forwarded-Host': 'evil.com', 'X-Host': 'evil.com' } as any }, 6000);
+      if (r.status === 0) return;
       const body = await r.text();
       if (body.includes('evil.com')) findings.push({ url: ep.url, sev: 'HIGH', desc: 'Host header reflected — password reset link hijacking possible' });
     } catch { /* */ }
-    await sleep(100);
-  }
+  });
   return findings;
 }
 
