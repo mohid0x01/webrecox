@@ -105,7 +105,7 @@ const Oneliners = () => {
   }, [filtered]);
 
   // Replace example.com with target across the displayed command
-  const personalize = (q: string) => target && target !== 'example.com' ? q.replaceAll('example.com', target) : q;
+  const personalize = (q: string) => target && target !== 'example.com' ? q.split('example.com').join(target) : q;
 
   const handleCopy = (q: string, id: string) => {
     navigator.clipboard.writeText(personalize(q));
