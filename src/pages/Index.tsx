@@ -327,13 +327,27 @@ const Index = () => {
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); toast.success('Copied!', { duration: 1000 }); };
 
   const shareScan = async () => {
-    if (!scanState.domain) { toast.error('No scan to share'); return; }
-    const { data } = await supabase.from('scan_results').select('id').eq('domain', scanState.domain.toLowerCase()).order('created_at', { ascending: false }).limit(1);
-    if (data?.[0]) {
-      const url = `${window.location.origin}/?share=${data[0].id}`;
-      navigator.clipboard.writeText(url);
-      toast.success('Share link copied! Recipients will see full results.', { duration: 5000 });
-    } else toast.error('Save a scan first');
+    if (!scanState.domain && !target) { toast.error('Run or load a scan first'); return; }
+    // Generate short share ID (8 chars, base36)
+    const shortId = (Math.random().toString(36).slice(2, 6) + Date.now().toString(36).slice(-4)).toLowerCase();
+    const payload = {
+      scan_data: scanState,
+      filter,
+      activeCat,
+      activeTab,
+      sources,
+      created_at: new Date().toISOString(),
+    };
+    const { error } = await supabase.from('shared_views').insert({
+      share_id: shortId,
+      kind: 'recon',
+      target_domain: scanState.domain || target,
+      payload: payload as any,
+    });
+    if (error) { toast.error('Could not create share link: ' + error.message); return; }
+    const url = `${window.location.origin}/?share=${shortId}`;
+    try { await navigator.clipboard.writeText(url); } catch { /* */ }
+    toast.success(`Share link copied: ${url}`, { duration: 6000 });
   };
 
   const filteredTabs = activeCat === 'all' ? ALL_TABS : ALL_TABS.filter(t => t.cat === activeCat);
