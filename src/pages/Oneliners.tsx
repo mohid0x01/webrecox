@@ -1,6 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, Copy, Check, Star, Download, ExternalLink, Microscope, X, Zap, Filter as FilterIcon } from 'lucide-react';
+import { Search, Copy, Check, Star, Download, ExternalLink, Microscope, X, Zap, Filter as FilterIcon, Share2, Upload, FileCode2 } from 'lucide-react';
 import { ONELINERS_DATA, SECTION_NAMES, CATEGORIES, MODULE_LINKS } from '@/data/onelinersData';
+import { analyzeJS, aggregateAnalyses, JSAnalysisResult, JSAnalysisFinding, Severity, SEV_ORDER } from '@/lib/jsAnalyzer';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const TAG_COLORS: Record<string, string> = {
   bash: 'bg-[hsl(var(--green))]/10 text-[hsl(var(--green))] border-[hsl(var(--green))]/25',
@@ -10,28 +13,13 @@ const TAG_COLORS: Record<string, string> = {
   ps: 'bg-[hsl(var(--teal))]/10 text-[hsl(var(--teal))] border-[hsl(var(--teal))]/25',
 };
 
-// Lightweight JS analyzer — runs in-browser, no upload needed
-const JS_PATTERNS: { name: string; sev: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'; re: RegExp; cat: 'bug' | 'endpoint' | 'secret' | 'info' }[] = [
-  { name: 'eval() usage', sev: 'CRITICAL', re: /\beval\s*\(/g, cat: 'bug' },
-  { name: 'Function() constructor', sev: 'HIGH', re: /\bnew\s+Function\s*\(/g, cat: 'bug' },
-  { name: 'innerHTML sink', sev: 'HIGH', re: /\.innerHTML\s*=/g, cat: 'bug' },
-  { name: 'document.write', sev: 'HIGH', re: /document\.write\s*\(/g, cat: 'bug' },
-  { name: 'dangerouslySetInnerHTML', sev: 'HIGH', re: /dangerouslySetInnerHTML/g, cat: 'bug' },
-  { name: 'location assignment', sev: 'MEDIUM', re: /location\s*=\s*[^;]+/g, cat: 'bug' },
-  { name: 'postMessage *', sev: 'MEDIUM', re: /postMessage\s*\([^,]+,\s*['"]\*['"]\s*\)/g, cat: 'bug' },
-  { name: 'Debug flag enabled', sev: 'LOW', re: /(?:debug|dev_mode)\s*[:=]\s*true/gi, cat: 'bug' },
-  { name: 'AWS Access Key', sev: 'CRITICAL', re: /\b(AKIA[0-9A-Z]{16})\b/g, cat: 'secret' },
-  { name: 'Generic API Key', sev: 'HIGH', re: /(?:api[_-]?key|apikey|secret|token)\s*[:=]\s*['"]([A-Za-z0-9_\-]{20,})['"]/gi, cat: 'secret' },
-  { name: 'Bearer token', sev: 'HIGH', re: /Bearer\s+[A-Za-z0-9\-_=.]{20,}/g, cat: 'secret' },
-  { name: 'Google API Key', sev: 'HIGH', re: /\bAIza[0-9A-Za-z\-_]{35}\b/g, cat: 'secret' },
-  { name: 'JWT', sev: 'MEDIUM', re: /\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b/g, cat: 'secret' },
-  { name: 'Slack token', sev: 'CRITICAL', re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, cat: 'secret' },
-  { name: 'API endpoint', sev: 'LOW', re: /['"`](\/[a-zA-Z0-9_\-./]{3,}\/(?:api|v1|v2|v3|graphql|rest)[a-zA-Z0-9_\-./?=&]*)['"`]/g, cat: 'endpoint' },
-  { name: 'Absolute URL', sev: 'LOW', re: /['"`](https?:\/\/[^'"`\s<>]{8,200})['"`]/g, cat: 'endpoint' },
-  { name: 'Source map exposed', sev: 'LOW', re: /sourceMappingURL\s*=/g, cat: 'info' },
-];
-
-interface JSFinding { name: string; sev: string; cat: string; match: string; }
+const SEV_COLOR: Record<Severity, string> = {
+  CRITICAL: 'hsl(0,82%,58%)',
+  HIGH: 'hsl(25,95%,55%)',
+  MEDIUM: 'hsl(45,95%,55%)',
+  LOW: 'hsl(195,75%,55%)',
+  INFO: 'hsl(var(--muted-foreground))',
+};
 
 const Oneliners = () => {
   const [search, setSearch] = useState('');
@@ -42,21 +30,48 @@ const Oneliners = () => {
   const [showFavs, setShowFavs] = useState(false);
   const [showAnalyzer, setShowAnalyzer] = useState(false);
   const [jsInput, setJsInput] = useState('');
-  const [jsResults, setJsResults] = useState<JSFinding[] | null>(null);
+  const [jsResults, setJsResults] = useState<JSAnalysisResult[] | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [target, setTarget] = useState('example.com');
 
-  // Load favs
+  // ── Load favorites + shared view from URL ──
   useEffect(() => {
     try {
       const s = localStorage.getItem('webrecox-fav-oneliners');
       if (s) setFavs(new Set(JSON.parse(s)));
     } catch { /* */ }
+
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('share');
+    const t = params.get('target');
+    if (t) setTarget(t);
+
+    if (sid) {
+      (async () => {
+        const { data } = await supabase
+          .from('shared_views')
+          .select('payload, kind')
+          .eq('share_id', sid)
+          .maybeSingle();
+        if (data?.payload && (data.kind === 'oneliners' || data.kind === 'js_analysis')) {
+          const p = data.payload as any;
+          if (typeof p.search === 'string') setSearch(p.search);
+          if (typeof p.category === 'string') setCategory(p.category);
+          if (typeof p.tagFilter === 'string') setTagFilter(p.tagFilter);
+          if (Array.isArray(p.favs)) setFavs(new Set(p.favs));
+          if (typeof p.showFavs === 'boolean') setShowFavs(p.showFavs);
+          if (Array.isArray(p.jsResults)) setJsResults(p.jsResults);
+          if (typeof p.target === 'string') setTarget(p.target);
+          toast.success('Loaded shared view');
+        }
+      })();
+    }
   }, []);
 
   const toggleFav = (id: string) => {
     setFavs(prev => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id); else n.add(id);
       try { localStorage.setItem('webrecox-fav-oneliners', JSON.stringify([...n])); } catch { /* */ }
       return n;
     });
@@ -77,7 +92,7 @@ const Oneliners = () => {
       const q = search.toLowerCase();
       const searchMatch = !q || (cmd.n + ' ' + cmd.d + ' ' + cmd.q + ' ' + cmd.c).toLowerCase().includes(q);
       return catMatch && tagMatch && favMatch && searchMatch;
-    }).map((cmd, i) => ({ cmd, id: `${cmd.c}-${ONELINERS_DATA.indexOf(cmd)}` }));
+    }).map((cmd) => ({ cmd, id: `${cmd.c}-${ONELINERS_DATA.indexOf(cmd)}` }));
   }, [search, category, tagFilter, showFavs, favs]);
 
   const grouped = useMemo(() => {
@@ -89,8 +104,11 @@ const Oneliners = () => {
     return g;
   }, [filtered]);
 
+  // Replace example.com with target across the displayed command
+  const personalize = (q: string) => target && target !== 'example.com' ? q.replaceAll('example.com', target) : q;
+
   const handleCopy = (q: string, id: string) => {
-    navigator.clipboard.writeText(q);
+    navigator.clipboard.writeText(personalize(q));
     setCopied(id);
     setTimeout(() => setCopied(null), 1500);
   };
@@ -101,7 +119,7 @@ const Oneliners = () => {
       ...filtered.map(({ cmd }) => [
         cmd.c, cmd.n, cmd.d, cmd.t.join('|'),
         MODULE_LINKS[cmd.c]?.label || '',
-        cmd.q,
+        personalize(cmd.q),
       ]),
     ];
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -112,50 +130,66 @@ const Oneliners = () => {
     a.click(); URL.revokeObjectURL(url);
   };
 
-  const analyzeJS = async (text: string) => {
+  // ── JS analysis (multi-file aware) ──
+  const analyzeBatch = async (files: { name: string; text: string }[]) => {
     setAnalyzing(true);
     setJsResults(null);
-    await new Promise(r => setTimeout(r, 50));
-    const seen = new Set<string>();
-    const out: JSFinding[] = [];
-    for (const p of JS_PATTERNS) {
-      const re = new RegExp(p.re.source, p.re.flags);
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(text)) !== null) {
-        const match = (m[1] || m[0]).slice(0, 200);
-        if (p.cat === 'endpoint') {
-          if (/\.(css|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot|map)$/i.test(match)) continue;
-          if (match.length < 4) continue;
-        }
-        const k = `${p.name}|${match}`;
-        if (seen.has(k)) continue;
-        seen.add(k);
-        out.push({ name: p.name, sev: p.sev, cat: p.cat, match });
-        if (out.length > 5000) break;
+    await new Promise(r => setTimeout(r, 30));
+    const results: JSAnalysisResult[] = [];
+    for (const f of files) {
+      try {
+        results.push(analyzeJS(f.text, f.name));
+      } catch (e: any) {
+        results.push({ file: f.name, endpoints: [], secrets: [], bugs: [], info: [], parseError: e?.message, totalLOC: 0 });
       }
-      if (out.length > 5000) break;
     }
-    setJsResults(out);
+    setJsResults(results);
     setAnalyzing(false);
+    const totals = aggregateAnalyses(results);
+    toast.success(`Analyzed ${results.length} file(s) · ${totals.endpoints.length} endpoints · ${totals.secrets.length} secrets · ${totals.bugs.length} bugs`);
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      const txt = String(r.result || '');
-      setJsInput(txt.slice(0, 5_000_000));
-      analyzeJS(txt);
+  const onAnalyzeText = () => {
+    if (!jsInput.trim()) return;
+    analyzeBatch([{ name: 'inline.js', text: jsInput }]);
+  };
+
+  const onMultiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const loaded: { name: string; text: string }[] = [];
+    for (const f of files) {
+      try {
+        const txt = await f.text();
+        loaded.push({ name: f.name, text: txt.slice(0, 5_000_000) });
+      } catch { /* */ }
+    }
+    e.target.value = '';
+    if (!loaded.length) { toast.error('Could not read files'); return; }
+    if (loaded.length === 1) setJsInput(loaded[0].text);
+    analyzeBatch(loaded);
+  };
+
+  const aggregated = useMemo(() => jsResults ? aggregateAnalyses(jsResults) : null, [jsResults]);
+
+  // ── Share current view ──
+  const shareView = async () => {
+    const shortId = (Math.random().toString(36).slice(2, 6) + Date.now().toString(36).slice(-4)).toLowerCase();
+    const payload = {
+      search, category, tagFilter, favs: [...favs], showFavs, target,
+      jsResults: jsResults || undefined,
     };
-    r.readAsText(f);
+    const { error } = await supabase.from('shared_views').insert({
+      share_id: shortId,
+      kind: jsResults?.length ? 'js_analysis' : 'oneliners',
+      target_domain: target,
+      payload: payload as any,
+    });
+    if (error) { toast.error('Share failed: ' + error.message); return; }
+    const url = `${window.location.origin}/oneliners?share=${shortId}`;
+    try { await navigator.clipboard.writeText(url); } catch { /* */ }
+    toast.success(`Share link copied: ${url}`, { duration: 6000 });
   };
-
-  const sevColor = (s: string) =>
-    s === 'CRITICAL' ? 'hsl(0,82%,58%)' :
-    s === 'HIGH' ? 'hsl(25,95%,55%)' :
-    s === 'MEDIUM' ? 'hsl(45,95%,55%)' :
-    'hsl(var(--muted-foreground))';
 
   const catCounts = useMemo(() => {
     const c: Record<string, number> = {};
@@ -165,7 +199,7 @@ const Oneliners = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header — matches Index */}
+      {/* Header */}
       <nav className="sticky top-0 z-50 bg-background/85 border-b border-primary/10 backdrop-blur-[20px]">
         <div className="max-w-[1400px] mx-auto px-5 h-[60px] flex items-center gap-3">
           <a href="/" className="flex items-center gap-2.5 no-underline">
@@ -182,9 +216,19 @@ const Oneliners = () => {
             {ONELINERS_DATA.length}+ Commands
           </span>
           <div className="ml-auto flex items-center gap-2">
+            <input
+              value={target}
+              onChange={e => setTarget(e.target.value.trim() || 'example.com')}
+              placeholder="target domain"
+              className="hidden md:block w-[170px] px-2.5 py-1.5 rounded-lg border border-primary/20 bg-white/[0.04] font-mono text-[10.5px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/45"
+            />
             <button onClick={() => setShowAnalyzer(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[hsl(var(--purple))]/30 bg-[hsl(var(--purple))]/8 text-[hsl(var(--purple))] text-[10.5px] font-semibold hover:bg-[hsl(var(--purple))]/15 transition-colors">
               <Microscope size={11} /> JS Analyzer
+            </button>
+            <button onClick={shareView}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[hsl(var(--green))]/25 bg-[hsl(var(--green))]/8 text-[hsl(var(--green))] text-[10.5px] font-semibold hover:bg-[hsl(var(--green))]/15 transition-colors">
+              <Share2 size={11} /> Share
             </button>
             <button onClick={exportCSV}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-white/[0.04] text-foreground text-[10.5px] font-semibold hover:bg-white/[0.07] transition-colors">
@@ -208,7 +252,7 @@ const Oneliners = () => {
           </h1>
           <p className="text-muted-foreground max-w-[640px] mx-auto leading-[1.7] text-[13px]">
             Curated commands across <span className="text-primary font-semibold">{CATEGORIES.length}</span> categories — tagged, searchable, deep-linked into the WebRecox dashboard.
-            <br/>Replace <code className="text-primary font-mono">example.com</code> with your authorised target.
+            <br />Set a target above and we'll personalise every command — share filters/favorites/findings via short links.
           </p>
         </div>
 
@@ -262,7 +306,8 @@ const Oneliners = () => {
         <div className="flex flex-wrap items-center gap-3 mb-5 text-[10.5px] text-muted-foreground font-mono">
           <span className="text-primary font-semibold">{filtered.length}</span> matching ·
           <span><span className="text-foreground">{Object.keys(grouped).length}</span> categories</span> ·
-          <span><span className="text-foreground">{favs.size}</span> ★ favorites</span>
+          <span><span className="text-foreground">{favs.size}</span> ★ favorites</span> ·
+          <span>target: <span className="text-primary">{target}</span></span>
         </div>
 
         {/* Commands */}
@@ -271,21 +316,23 @@ const Oneliners = () => {
         )}
         {Object.entries(grouped).map(([cat, items]) => {
           const moduleLink = MODULE_LINKS[cat];
+          const moduleHref = moduleLink ? `/?tab=${moduleLink.tab}&target=${encodeURIComponent(target)}` : null;
           return (
             <div key={cat} className="mb-7">
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-primary/10">
                 <span className="text-[13px] font-bold text-foreground">{SECTION_NAMES[cat] || cat}</span>
                 <span className="bg-primary/10 text-primary px-1.5 rounded font-mono text-[9px]">{items.length}</span>
-                {moduleLink && (
-                  <a href={`/?tab=${moduleLink.tab}`} title="Open the matching scanner module"
+                {moduleHref && (
+                  <a href={moduleHref} title={`Open ${moduleLink!.label} pre-filled with ${target}`}
                     className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-[hsl(var(--purple))]/25 bg-[hsl(var(--purple))]/5 text-[hsl(var(--purple))] text-[9.5px] font-semibold no-underline hover:bg-[hsl(var(--purple))]/12 transition-colors">
-                    <ExternalLink size={9} /> Run in {moduleLink.label}
+                    <ExternalLink size={9} /> Run in {moduleLink!.label}
                   </a>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
                 {items.map(({ cmd, id }) => {
                   const isFav = favs.has(id);
+                  const displayed = personalize(cmd.q);
                   return (
                     <div key={id} className="bg-card/60 border border-border rounded-[10px] overflow-hidden hover:border-primary/25 transition-all">
                       <div className="px-3 py-2 flex items-center gap-2 flex-wrap">
@@ -304,7 +351,7 @@ const Oneliners = () => {
                       </div>
                       <div className="px-3 pb-2.5">
                         <div className="relative bg-black/55 border border-primary/10 rounded-md p-2.5 pr-16">
-                          <pre className="font-mono text-[11px] text-foreground/75 whitespace-pre-wrap break-all leading-relaxed">{cmd.q}</pre>
+                          <pre className="font-mono text-[11px] text-foreground/75 whitespace-pre-wrap break-all leading-relaxed">{displayed}</pre>
                           <button
                             onClick={() => handleCopy(cmd.q, id)}
                             className="absolute top-1.5 right-1.5 px-2 py-1 bg-primary/12 border border-primary/25 rounded text-[8.5px] font-mono text-primary hover:bg-primary/20 transition-colors flex items-center gap-1 active:scale-95">
@@ -326,78 +373,118 @@ const Oneliners = () => {
         © 2026 <span className="text-primary">WebRecox</span> by <a href="https://teamcyberops.vercel.app" target="_blank" rel="noreferrer" className="text-primary no-underline">TeamCyberOps</a> — for authorised security testing only.
       </footer>
 
-      {/* JS Analyzer Modal */}
+      {/* JS Analyzer Modal — AST-powered */}
       {showAnalyzer && (
         <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowAnalyzer(false)}>
-          <div className="bg-card border border-primary/25 rounded-[16px] w-full max-w-[1100px] max-h-[88vh] overflow-hidden flex flex-col shadow-[0_24px_80px_-12px_hsla(38,92%,50%,0.35)]" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-primary/25 rounded-[16px] w-full max-w-[1200px] max-h-[92vh] overflow-hidden flex flex-col shadow-[0_24px_80px_-12px_hsla(38,92%,50%,0.35)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-5 py-3 border-b border-primary/10">
               <Microscope size={15} className="text-[hsl(var(--purple))]" />
-              <span className="text-[13px] font-bold">JS Code Analyzer <span className="text-muted-foreground font-normal">— paste or upload JS to extract endpoints + bugs</span></span>
+              <span className="text-[13px] font-bold">
+                JS AST Analyzer
+                <span className="text-muted-foreground font-normal"> — acorn-walked endpoints + secrets + bugs (multi-file aware)</span>
+              </span>
               <div className="ml-auto flex items-center gap-2">
-                <label className="px-3 py-1.5 rounded-md border border-border bg-white/[0.04] text-[10px] font-semibold cursor-pointer hover:bg-white/[0.08] transition-colors">
-                  📁 Upload .js
-                  <input type="file" accept=".js,.mjs,.ts,.jsx,.tsx,text/javascript" className="hidden" onChange={onFile} />
+                <label className="px-3 py-1.5 rounded-md border border-border bg-white/[0.04] text-[10px] font-semibold cursor-pointer hover:bg-white/[0.08] transition-colors flex items-center gap-1.5">
+                  <Upload size={10} /> Upload many .js
+                  <input type="file" accept=".js,.mjs,.ts,.jsx,.tsx,text/javascript" multiple className="hidden" onChange={onMultiFile} />
                 </label>
-                <button onClick={() => analyzeJS(jsInput)} disabled={!jsInput.trim() || analyzing}
+                <button onClick={onAnalyzeText} disabled={!jsInput.trim() || analyzing}
                   className="px-3 py-1.5 rounded-md bg-primary/15 border border-primary/30 text-primary text-[10px] font-semibold hover:bg-primary/25 transition-colors disabled:opacity-50">
-                  {analyzing ? 'Analyzing…' : 'Analyze'}
+                  {analyzing ? 'Analyzing…' : 'Analyze pasted'}
                 </button>
                 <button onClick={() => setShowAnalyzer(false)} className="text-muted-foreground hover:text-foreground p-1">
                   <X size={15} />
                 </button>
               </div>
             </div>
+
             <div className="grid md:grid-cols-2 gap-0 flex-1 min-h-0">
+              {/* Left: source */}
               <div className="border-r border-primary/10 p-4 overflow-auto">
-                <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground mb-2 font-bold">Source</div>
+                <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground mb-2 font-bold flex items-center gap-2">
+                  <FileCode2 size={10} /> Source
+                  {jsResults && jsResults.length > 1 && <span className="text-primary">{jsResults.length} files analyzed</span>}
+                </div>
                 <textarea
                   value={jsInput}
                   onChange={e => setJsInput(e.target.value)}
-                  placeholder="// Paste JavaScript code here&#10;fetch('/api/v1/users').then(r => r.json())"
-                  className="w-full h-[60vh] font-mono text-[11px] bg-black/55 border border-primary/10 rounded-md p-3 text-foreground/85 placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 resize-none"
+                  placeholder="// Paste JavaScript code, or use 'Upload many .js' for multi-file analysis&#10;fetch('/api/v1/users').then(r => r.json())"
+                  className="w-full h-[68vh] font-mono text-[11px] bg-black/55 border border-primary/10 rounded-md p-3 text-foreground/85 placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 resize-none"
                 />
-              </div>
-              <div className="p-4 overflow-auto">
-                <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground mb-2 font-bold">
-                  Findings {jsResults && <span className="text-primary">· {jsResults.length}</span>}
-                </div>
-                {!jsResults && !analyzing && (
-                  <div className="text-muted-foreground font-mono text-[11px] py-12 text-center">
-                    Paste or upload JS, then click <span className="text-primary">Analyze</span>.
+                {jsResults && jsResults.length > 1 && (
+                  <div className="mt-3 space-y-1 text-[10px] font-mono">
+                    {jsResults.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 px-2 py-1 rounded bg-white/[0.03] border border-border">
+                        <span className="truncate flex-1">{r.file}</span>
+                        <span className="text-muted-foreground">{r.totalLOC} loc</span>
+                        <span className="text-[hsl(var(--teal))]">{r.endpoints.length} ep</span>
+                        <span className="text-primary">{r.secrets.length} sec</span>
+                        <span className="text-destructive">{r.bugs.length} bug</span>
+                        {r.parseError && <span className="text-[hsl(25,95%,55%)]" title={r.parseError}>!</span>}
+                      </div>
+                    ))}
                   </div>
                 )}
-                {analyzing && <div className="text-muted-foreground font-mono text-[11px] py-12 text-center">⚙ Analysing…</div>}
-                {jsResults && jsResults.length === 0 && <div className="text-muted-foreground font-mono text-[11px] py-12 text-center">✅ Clean — no signals found.</div>}
-                {jsResults && jsResults.length > 0 && (
+              </div>
+
+              {/* Right: findings grouped by severity */}
+              <div className="p-4 overflow-auto">
+                <div className="text-[9px] uppercase tracking-[0.14em] text-muted-foreground mb-2 font-bold">
+                  Findings {aggregated && <span className="text-primary">· {aggregated.endpoints.length + aggregated.secrets.length + aggregated.bugs.length + aggregated.info.length}</span>}
+                </div>
+                {!aggregated && !analyzing && (
+                  <div className="text-muted-foreground font-mono text-[11px] py-12 text-center">
+                    Paste JS, or upload one or many <code className="text-primary">.js</code> files. We'll AST-walk them and group findings by severity.
+                  </div>
+                )}
+                {analyzing && <div className="text-muted-foreground font-mono text-[11px] py-12 text-center">⚙ Walking AST…</div>}
+                {aggregated && (
                   <>
-                    <div className="grid grid-cols-4 gap-2 mb-3">
-                      {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const).map(s => (
-                        <div key={s} className="rounded-md border border-border bg-white/[0.03] p-2">
-                          <div className="text-[8px] tracking-[0.14em] uppercase font-bold" style={{ color: sevColor(s) }}>{s}</div>
-                          <div className="text-[15px] font-bold" style={{ color: sevColor(s) }}>
-                            {jsResults.filter(r => r.sev === s).length}
+                    {/* Severity tiles */}
+                    <div className="grid grid-cols-5 gap-1.5 mb-3">
+                      {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'] as Severity[]).map(s => {
+                        const n = aggregated.bySeverity[s].length;
+                        return (
+                          <div key={s} className="rounded-md border bg-white/[0.03] p-2"
+                            style={{ borderColor: SEV_COLOR[s] + '40' }}>
+                            <div className="text-[8px] tracking-[0.14em] uppercase font-bold" style={{ color: SEV_COLOR[s] }}>{s}</div>
+                            <div className="text-[15px] font-bold" style={{ color: SEV_COLOR[s] }}>{n}</div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
-                    {(['bug', 'secret', 'endpoint', 'info'] as const).map(c => {
-                      const items = jsResults.filter(r => r.cat === c);
-                      if (!items.length) return null;
+
+                    {/* Per-category sections */}
+                    {([
+                      { key: 'secrets', label: '🔑 Secrets', items: aggregated.secrets },
+                      { key: 'bugs', label: '🐛 Security Bugs', items: aggregated.bugs },
+                      { key: 'endpoints', label: '🔗 Real Endpoints (AST)', items: aggregated.endpoints },
+                      { key: 'info', label: 'ℹ Info', items: aggregated.info },
+                    ] as const).map(section => {
+                      if (!section.items.length) return null;
+                      const sorted = [...section.items].sort((a, b) => SEV_ORDER[a.severity] - SEV_ORDER[b.severity]);
                       return (
-                        <div key={c} className="mb-3">
+                        <div key={section.key} className="mb-3">
                           <div className="text-[10px] font-bold mb-1.5 text-foreground/85">
-                            {c === 'bug' ? '🐛 Security Bugs' : c === 'secret' ? '🔑 Secrets' : c === 'endpoint' ? '🔗 Endpoints' : 'ℹ Info'} ({items.length})
+                            {section.label} <span className="text-muted-foreground">({section.items.length})</span>
                           </div>
-                          {items.slice(0, 500).map((r, i) => (
+                          {sorted.slice(0, 1500).map((r: JSAnalysisFinding, i: number) => (
                             <div key={i} className="mb-1 p-2 rounded border bg-white/[0.02] border-border hover:border-primary/20 transition-colors">
-                              <div className="flex items-center gap-2 mb-0.5">
+                              <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                 <span className="px-1.5 py-0.5 rounded text-[8px] font-bold font-mono border"
-                                  style={{ color: sevColor(r.sev), borderColor: sevColor(r.sev) + '50', background: sevColor(r.sev) + '12' }}>
-                                  {r.sev}
+                                  style={{ color: SEV_COLOR[r.severity], borderColor: SEV_COLOR[r.severity] + '50', background: SEV_COLOR[r.severity] + '12' }}>
+                                  {r.severity}
                                 </span>
-                                <span className="text-[10px] font-semibold">{r.name}</span>
+                                <span className="text-[10px] font-semibold">{r.type}</span>
+                                {r.confidence !== 'high' && (
+                                  <span className="text-[8px] text-muted-foreground font-mono uppercase tracking-wider">{r.confidence} conf</span>
+                                )}
+                                {r.file && r.file !== 'inline.js' && (
+                                  <span className="ml-auto text-[8px] text-muted-foreground font-mono truncate max-w-[180px]">{r.file}{r.line ? `:${r.line}` : ''}</span>
+                                )}
                               </div>
-                              <code className="text-[10px] text-primary font-mono break-all block ml-1">{r.match}</code>
+                              <code className="text-[10px] text-primary font-mono break-all block ml-1">{r.value}</code>
+                              {r.context && <div className="text-[9px] text-muted-foreground mt-0.5 ml-1">{r.context}</div>}
                             </div>
                           ))}
                         </div>
