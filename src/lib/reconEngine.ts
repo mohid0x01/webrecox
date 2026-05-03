@@ -122,12 +122,41 @@ export async function pFetch(url: string, ms = 20000): Promise<Response> {
   return new Response('', { status: 0 }) as any;
 }
 
+/** Resilient fetch: tries direct first, then falls back through proxies on CORS/network errors.
+ *  Used by all vulnerability modules so they don't silently die on blocked origins. */
 async function sf(url: string, opts?: RequestInit, ms = 15000) {
+  // Direct attempt
   try {
-    return await fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
-  } catch {
-    return { ok: false, status: 0, json: async () => ({}), text: async () => '', headers: new Headers() } as any;
+    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
+    if (r.status > 0) return r;
+  } catch { /* fall through to proxies */ }
+
+  // GET-only fallbacks (proxies don't support custom methods/headers reliably)
+  const method = (opts?.method || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD') {
+    for (const proxy of PROXIES.slice(1)) { // skip the identity proxy (already tried)
+      try {
+        const r = await fetch(proxy(url), { signal: AbortSignal.timeout(Math.min(ms, 12000)) });
+        if (r.status > 0) return r;
+      } catch { /* next */ }
+    }
   }
+
+  return { ok: false, status: 0, json: async () => ({}), text: async () => '', headers: new Headers() } as any;
+}
+
+/** Concurrency-limited Promise.all — prevents 1000s of parallel fetches that DoS the proxies. */
+export async function mapPool<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      try { out[i] = await fn(items[i], i); } catch { out[i] = undefined as any; }
+    }
+  });
+  await Promise.all(workers);
+  return out;
 }
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
