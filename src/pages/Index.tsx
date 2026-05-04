@@ -8,7 +8,13 @@ import {
   generateMarkdownReport, generateBurpXML, generateNucleiTargets,
 } from '@/lib/reconEngine';
 import { playScanStart, playScanComplete, playModuleDone, playModuleError, playAlert, playFindingCritical } from '@/lib/soundUtils';
+import JSAnalyzerModal from '@/components/JSAnalyzerModal';
+import ProxySettingsPanel from '@/components/ProxySettingsPanel';
+import { applyProfileToSources, type ProfileId } from '@/lib/scanProfiles';
 const ThreatMap = lazy(() => import('@/components/ThreatMap'));
+
+const HISTORY_PASSPHRASE = 'WebRecox-TeamCyberOps';
+const HISTORY_UNLOCK_KEY = 'webrecox.historyUnlocked.v1';
 
 // ── All tabs ──
 const ALL_TABS = [
