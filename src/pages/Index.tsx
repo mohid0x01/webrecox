@@ -511,6 +511,11 @@ const Index = () => {
               {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
               {scanning ? 'Scanning…' : 'Full Scan'}
             </button>
+            <button onClick={() => { setAnalyzerTarget(target.trim() ? (target.trim().startsWith('http') ? target.trim() : 'https://' + target.trim()) : ''); setShowAnalyzer(true); }}
+              className="border border-[hsl(var(--teal))]/40 bg-[hsl(var(--teal))]/8 rounded-[11px] px-5 py-[13px] text-[hsl(var(--teal))] font-bold text-[13px] tracking-[0.03em] hover:bg-[hsl(var(--teal))]/15 transition-all flex items-center gap-2"
+              title="Open JS Code Analyzer (AST + endpoint crawler)">
+              <Microscope size={14} /> JS Analyzer
+            </button>
           </div>
 
           {/* Scan Profiles */}
