@@ -104,39 +104,40 @@ export function createScanState(): ScanState {
   };
 }
 
-// ── PROXY FETCH ──
-const PROXIES = [
-  (u: string) => u,
-  (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-  (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-];
+// ── PROXY FETCH (runtime-configurable) ──
+import { getActiveProviders, getProxyConfig } from './proxyConfig';
 
-export async function pFetch(url: string, ms = 20000): Promise<Response> {
-  for (const proxy of PROXIES) {
+export async function pFetch(url: string, ms?: number): Promise<Response> {
+  const cfg = getProxyConfig();
+  const tmo = ms ?? cfg.timeoutMs;
+  for (const proxy of getActiveProviders()) {
     try {
-      const r = await fetch(proxy(url), { signal: AbortSignal.timeout(Math.min(ms, 15000)) });
+      const r = await fetch(proxy.build(url), { signal: AbortSignal.timeout(Math.min(tmo, cfg.timeoutMs)) });
       if (r.ok) return r;
     } catch { /* next */ }
   }
   return new Response('', { status: 0 }) as any;
 }
 
-/** Resilient fetch: tries direct first, then falls back through proxies on CORS/network errors.
- *  Used by all vulnerability modules so they don't silently die on blocked origins. */
-async function sf(url: string, opts?: RequestInit, ms = 15000) {
-  // Direct attempt
-  try {
-    const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(ms) });
-    if (r.status > 0) return r;
-  } catch { /* fall through to proxies */ }
+/** Resilient fetch: tries direct first, then falls back through configured proxies. */
+async function sf(url: string, opts?: RequestInit, ms?: number) {
+  const cfg = getProxyConfig();
+  const tmo = ms ?? cfg.timeoutMs;
+  // Direct attempt (skip if proxy-only mode is enforced via opts.skipDirect)
+  const skipDirect = (opts as any)?.skipDirect === true;
+  if (!skipDirect) {
+    try {
+      const r = await fetch(url, { ...opts, signal: AbortSignal.timeout(tmo) });
+      if (r.status > 0) return r;
+    } catch { /* fall through */ }
+  }
 
-  // GET-only fallbacks (proxies don't support custom methods/headers reliably)
   const method = (opts?.method || 'GET').toUpperCase();
-  if (method === 'GET' || method === 'HEAD') {
-    for (const proxy of PROXIES.slice(1)) { // skip the identity proxy (already tried)
+  if (cfg.enabled && (method === 'GET' || method === 'HEAD')) {
+    for (const proxy of getActiveProviders()) {
+      if (proxy.id === 'direct') continue;
       try {
-        const r = await fetch(proxy(url), { signal: AbortSignal.timeout(Math.min(ms, 12000)) });
+        const r = await fetch(proxy.build(url), { signal: AbortSignal.timeout(Math.min(tmo, cfg.timeoutMs)) });
         if (r.status > 0) return r;
       } catch { /* next */ }
     }
