@@ -1524,6 +1524,10 @@ const Index = () => {
         </div>
       </div>
 
+      {/* MODALS */}
+      <JSAnalyzerModal open={showAnalyzer} onClose={() => setShowAnalyzer(false)} initialTarget={analyzerTarget} />
+      <ProxySettingsPanel open={showProxySettings} onClose={() => setShowProxySettings(false)} />
+
       {/* FOOTER */}
       <footer className="border-t border-primary/7 py-5">
         <div className="max-w-[1300px] mx-auto px-6 flex items-center justify-between flex-wrap gap-3">
