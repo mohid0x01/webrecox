@@ -8,7 +8,13 @@ import {
   generateMarkdownReport, generateBurpXML, generateNucleiTargets,
 } from '@/lib/reconEngine';
 import { playScanStart, playScanComplete, playModuleDone, playModuleError, playAlert, playFindingCritical } from '@/lib/soundUtils';
+import JSAnalyzerModal from '@/components/JSAnalyzerModal';
+import ProxySettingsPanel from '@/components/ProxySettingsPanel';
+import { applyProfileToSources, type ProfileId } from '@/lib/scanProfiles';
 const ThreatMap = lazy(() => import('@/components/ThreatMap'));
+
+const HISTORY_PASSPHRASE = 'WebRecox-TeamCyberOps';
+const HISTORY_UNLOCK_KEY = 'webrecox.historyUnlocked.v1';
 
 // ── All tabs ──
 const ALL_TABS = [
@@ -142,6 +148,13 @@ const Index = () => {
   const [queueDomains, setQueueDomains] = useState('');
   const [queueStatus, setQueueStatus] = useState<{ domain: string; status: string }[]>([]);
   const [shareId, setShareId] = useState<string | null>(null);
+  const [showAnalyzer, setShowAnalyzer] = useState(false);
+  const [analyzerTarget, setAnalyzerTarget] = useState<string>('');
+  const [showProxySettings, setShowProxySettings] = useState(false);
+  const [historyUnlocked, setHistoryUnlocked] = useState<boolean>(() => {
+    try { return localStorage.getItem(HISTORY_UNLOCK_KEY) === '1'; } catch { return false; }
+  });
+  const [historyKeyInput, setHistoryKeyInput] = useState('');
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
@@ -267,7 +280,8 @@ const Index = () => {
     if (soundEnabled) playScanStart();
     toast.info(`🔍 Starting scan for ${d}`, { duration: 3000 });
     try {
-      const result = await runFullScan(d, sources,
+      const effectiveSources = applyProfileToSources(profile as ProfileId, sources);
+      const result = await runFullScan(d, effectiveSources,
         (name, status, detail) => {
           setModules(prev => ({ ...prev, [name]: { status, detail } }));
           if (status === 'done') toast.success(`✓ ${name} complete`, { duration: 2000 });
@@ -445,6 +459,15 @@ const Index = () => {
             <button onClick={shareScan} className="px-2.5 py-1.5 border border-[hsl(var(--green))]/20 bg-[hsl(var(--green))]/5 rounded-lg text-[10px] font-semibold text-[hsl(var(--green))] hover:bg-[hsl(var(--green))]/10 transition-all cursor-pointer flex items-center gap-1">
               <Share2 size={10} /> Share
             </button>
+            <button onClick={() => { setAnalyzerTarget(target.trim() ? (target.trim().startsWith('http') ? target.trim() : 'https://' + target.trim()) : ''); setShowAnalyzer(true); }}
+              className="px-2.5 py-1.5 border border-[hsl(var(--teal))]/25 bg-[hsl(var(--teal))]/5 rounded-lg text-[10px] font-semibold text-[hsl(var(--teal))] hover:bg-[hsl(var(--teal))]/10 transition-all cursor-pointer flex items-center gap-1">
+              <Microscope size={10} /> JS Analyzer
+            </button>
+            <button onClick={() => setShowProxySettings(true)}
+              className="px-2.5 py-1.5 border border-border bg-white/[0.03] rounded-lg text-[10px] font-semibold text-muted-foreground hover:text-foreground hover:border-primary/25 transition-all cursor-pointer flex items-center gap-1"
+              title="Proxy fallback settings">
+              ⚙ Proxy
+            </button>
             <a href="/oneliners" className="px-3 py-1.5 border border-[hsl(var(--purple))]/20 bg-[hsl(var(--purple))]/5 rounded-lg text-[10.5px] font-semibold text-[hsl(var(--purple))] hover:bg-[hsl(var(--purple))]/10 transition-colors no-underline">
               ⚡ Oneliners
             </a>
@@ -487,6 +510,11 @@ const Index = () => {
               className="scan-btn-gradient border-none rounded-[11px] px-6 py-[13px] text-white font-bold text-[13px] tracking-[0.03em] cursor-pointer transition-all flex items-center gap-2 disabled:opacity-45 disabled:cursor-not-allowed active:translate-y-0">
               {scanning ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
               {scanning ? 'Scanning…' : 'Full Scan'}
+            </button>
+            <button onClick={() => { setAnalyzerTarget(target.trim() ? (target.trim().startsWith('http') ? target.trim() : 'https://' + target.trim()) : ''); setShowAnalyzer(true); }}
+              className="border border-[hsl(var(--teal))]/40 bg-[hsl(var(--teal))]/8 rounded-[11px] px-5 py-[13px] text-[hsl(var(--teal))] font-bold text-[13px] tracking-[0.03em] hover:bg-[hsl(var(--teal))]/15 transition-all flex items-center gap-2"
+              title="Open JS Code Analyzer (AST + endpoint crawler)">
+              <Microscope size={14} /> JS Analyzer
             </button>
           </div>
 
@@ -748,10 +776,22 @@ const Index = () => {
             {/* JS Files */}
             {activeTab === 'js' && (scanState.js.length === 0 ? <Empty /> : (
               <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 100000000).map((j, i) => (
-                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
+                <div key={i} className="group flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
-                  <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px]">{j.url}</a>
-                  <span className="ml-auto text-muted-foreground text-[9px] shrink-0">{j.source}</span>
+                  <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px] flex-1">{j.url}</a>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => { setAnalyzerTarget(j.url); setShowAnalyzer(true); }}
+                      className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-[hsl(var(--teal))]/12 border border-[hsl(var(--teal))]/30 text-[hsl(var(--teal))] hover:bg-[hsl(var(--teal))]/20 flex items-center gap-1"
+                      title="Analyze this JS with AST analyzer">
+                      <Microscope size={9} /> Analyze
+                    </button>
+                    <button onClick={() => copyToClipboard(j.url)}
+                      className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-white/[0.04] border border-border text-muted-foreground hover:text-foreground"
+                      title="Copy URL">
+                      <Copy size={9} />
+                    </button>
+                  </div>
+                  <span className="ml-1 text-muted-foreground text-[9px] shrink-0">{j.source}</span>
                 </div>
               ))}</div>
             ))}
@@ -1431,23 +1471,62 @@ const Index = () => {
             ))}
 
             {/* HISTORY */}
-            {activeTab === 'history' && (history.length === 0 ? <Empty msg="No scan history yet." /> : (
-              <div>{history.map(h => (
-                <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 border-b border-white/[0.03] hover:bg-primary/[0.02] cursor-pointer transition-colors"
-                  onClick={async () => {
-                    const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
-                    if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); toast.success(`Loaded scan for ${data.domain}`); }
-                  }}>
-                  <Globe size={14} className="text-primary shrink-0" />
-                  <span className="text-primary font-semibold text-[12px]">{h.domain}</span>
-                  <span className="text-muted-foreground text-[9px] font-mono">{h.scan_type}</span>
-                  <span className="ml-auto text-muted-foreground text-[9px] font-mono">{new Date(h.created_at).toLocaleString()}</span>
+            {activeTab === 'history' && (!historyUnlocked ? (
+              <div className="flex flex-col items-center justify-center py-20 px-6">
+                <Lock size={36} className="text-primary/60 mb-4" />
+                <div className="text-sm font-bold text-foreground mb-1">History is locked</div>
+                <p className="text-[11.5px] text-muted-foreground mb-5 text-center max-w-sm">
+                  Enter the access passphrase to unlock the scan history vault.
+                </p>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (historyKeyInput === HISTORY_PASSPHRASE) {
+                    setHistoryUnlocked(true);
+                    try { localStorage.setItem(HISTORY_UNLOCK_KEY, '1'); } catch { /* ignore */ }
+                    toast.success('🔓 History unlocked');
+                  } else {
+                    toast.error('Wrong passphrase');
+                    setHistoryKeyInput('');
+                  }
+                }} className="flex gap-2 w-full max-w-sm">
+                  <input type="password" value={historyKeyInput} onChange={e => setHistoryKeyInput(e.target.value)}
+                    placeholder="Access passphrase…"
+                    className="flex-1 bg-background/60 border border-border rounded-lg px-3 py-2 text-xs text-foreground font-mono outline-none focus:border-primary/40" />
+                  <button type="submit" className="px-4 py-2 rounded-lg bg-primary/15 border border-primary/30 text-primary text-xs font-bold hover:bg-primary/25">
+                    Unlock
+                  </button>
+                </form>
+              </div>
+            ) : (history.length === 0 ? <Empty msg="No scan history yet." /> : (
+              <div>
+                <div className="flex items-center justify-between mb-2 px-2">
+                  <span className="text-[10.5px] text-muted-foreground">{history.length} scan{history.length === 1 ? '' : 's'} stored</span>
+                  <button onClick={() => { setHistoryUnlocked(false); try { localStorage.removeItem(HISTORY_UNLOCK_KEY); } catch { /* ignore */ } toast.info('History re-locked'); }}
+                    className="text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-1">
+                    <Lock size={9} /> Re-lock
+                  </button>
                 </div>
-              ))}</div>
-            ))}
+                {history.map(h => (
+                  <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 border-b border-white/[0.03] hover:bg-primary/[0.02] cursor-pointer transition-colors"
+                    onClick={async () => {
+                      const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
+                      if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); toast.success(`Loaded scan for ${data.domain}`); }
+                    }}>
+                    <Globe size={14} className="text-primary shrink-0" />
+                    <span className="text-primary font-semibold text-[12px]">{h.domain}</span>
+                    <span className="text-muted-foreground text-[9px] font-mono">{h.scan_type}</span>
+                    <span className="ml-auto text-muted-foreground text-[9px] font-mono">{new Date(h.created_at).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )))}
           </div>
         </div>
       </div>
+
+      {/* MODALS */}
+      <JSAnalyzerModal open={showAnalyzer} onClose={() => setShowAnalyzer(false)} initialTarget={analyzerTarget} />
+      <ProxySettingsPanel open={showProxySettings} onClose={() => setShowProxySettings(false)} />
 
       {/* FOOTER */}
       <footer className="border-t border-primary/7 py-5">

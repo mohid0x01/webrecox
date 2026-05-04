@@ -316,3 +316,102 @@ export function aggregateAnalyses(results: JSAnalysisResult[]): {
     bySeverity: groupBySeverity(everything),
   };
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Enhanced regex fallback — catches dynamic/concatenated/minified endpoints.
+   ────────────────────────────────────────────────────────────────────────── */
+
+const REGEX_ENDPOINT_PATTERNS: RegExp[] = [
+  /["'`](\/(?:api|v\d+|graphql|rest|gateway|service|admin|user|auth|account|oauth|public|internal|private|backend)\/[A-Za-z0-9_\-./{}%?=&]+)["'`]/g,
+  /["'`](https?:\/\/[A-Za-z0-9.\-]+\/[A-Za-z0-9_\-./{}%?=&]*)["'`]/g,
+  /(?:url|endpoint|path|uri|baseURL|baseUrl|apiUrl|apiBase)\s*[:=]\s*["'`]([^"'`]{2,200})["'`]/gi,
+  /["'`](\/[a-z0-9_\-./]{3,})["'`]\s*\+/gi,
+];
+
+export function extractEndpointsRegex(code: string, file = 'inline.js'): JSAnalysisFinding[] {
+  const out: JSAnalysisFinding[] = [];
+  for (const re of REGEX_ENDPOINT_PATTERNS) {
+    const r = new RegExp(re.source, re.flags);
+    let m: RegExpExecArray | null;
+    while ((m = r.exec(code)) !== null) {
+      const v = (m[1] || m[0]).slice(0, 400);
+      const det = isLikelyEndpoint(v);
+      if (!det.ok) continue;
+      out.push({
+        category: 'endpoint',
+        severity: det.confidence === 'high' ? 'LOW' : 'INFO',
+        type: 'Regex-extracted endpoint',
+        value: v, file,
+        line: lineOf(code, m.index),
+        confidence: det.confidence,
+      });
+      if (out.length > 5000) break;
+    }
+  }
+  return dedupe(out);
+}
+
+export function extractAllEndpoints(code: string, file = 'inline.js'): JSAnalysisFinding[] {
+  const fromAst = (() => { try { return extractEndpointsAST(code, file); } catch { return [] as JSAnalysisFinding[]; } })();
+  const fromRegex = extractEndpointsRegex(code, file);
+  return dedupe([...fromAst, ...fromRegex]);
+}
+
+/* ── External JS crawler ── */
+
+async function fetchJsBody(url: string, timeoutMs = 12000): Promise<string | null> {
+  const proxies = [
+    (u: string) => u,
+    (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  ];
+  for (const p of proxies) {
+    try {
+      const r = await fetch(p(url), { signal: AbortSignal.timeout(timeoutMs) });
+      if (r.ok) {
+        const t = await r.text();
+        if (t && t.length > 0) return t;
+      }
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+export async function discoverScriptUrls(targetUrl: string): Promise<string[]> {
+  const html = await fetchJsBody(targetUrl, 15000);
+  if (!html) return [];
+  const out = new Set<string>();
+  let base: URL;
+  try { base = new URL(targetUrl); } catch { return []; }
+  const re = /<script[^>]+src\s*=\s*["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    try {
+      const abs = new URL(m[1], base).toString();
+      if (/\.js(\?|#|$)/.test(abs) || abs.endsWith('.js')) out.add(abs);
+    } catch { /* ignore */ }
+  }
+  const re2 = /<link[^>]+rel=["'](?:preload|modulepreload)["'][^>]+href\s*=\s*["']([^"']+\.js[^"']*)["']/gi;
+  while ((m = re2.exec(html)) !== null) {
+    try { out.add(new URL(m[1], base).toString()); } catch { /* ignore */ }
+  }
+  return [...out].slice(0, 200);
+}
+
+export async function crawlAndAnalyze(targetUrl: string, opts?: { maxFiles?: number }): Promise<JSAnalysisResult[]> {
+  const max = opts?.maxFiles ?? 100;
+  const urls = (await discoverScriptUrls(targetUrl)).slice(0, max);
+  const out: JSAnalysisResult[] = [];
+  for (const u of urls) {
+    const body = await fetchJsBody(u);
+    if (!body) {
+      out.push({ file: u, endpoints: [], secrets: [], bugs: [], info: [], totalLOC: 0, parseError: 'fetch failed' });
+      continue;
+    }
+    const r = analyzeJS(body, u);
+    const extra = extractEndpointsRegex(body, u);
+    r.endpoints = dedupe([...r.endpoints, ...extra]);
+    out.push(r);
+  }
+  return out;
+}
