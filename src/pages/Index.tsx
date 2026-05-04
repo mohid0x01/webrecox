@@ -1471,20 +1471,55 @@ const Index = () => {
             ))}
 
             {/* HISTORY */}
-            {activeTab === 'history' && (history.length === 0 ? <Empty msg="No scan history yet." /> : (
-              <div>{history.map(h => (
-                <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 border-b border-white/[0.03] hover:bg-primary/[0.02] cursor-pointer transition-colors"
-                  onClick={async () => {
-                    const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
-                    if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); toast.success(`Loaded scan for ${data.domain}`); }
-                  }}>
-                  <Globe size={14} className="text-primary shrink-0" />
-                  <span className="text-primary font-semibold text-[12px]">{h.domain}</span>
-                  <span className="text-muted-foreground text-[9px] font-mono">{h.scan_type}</span>
-                  <span className="ml-auto text-muted-foreground text-[9px] font-mono">{new Date(h.created_at).toLocaleString()}</span>
+            {activeTab === 'history' && (!historyUnlocked ? (
+              <div className="flex flex-col items-center justify-center py-20 px-6">
+                <Lock size={36} className="text-primary/60 mb-4" />
+                <div className="text-sm font-bold text-foreground mb-1">History is locked</div>
+                <p className="text-[11.5px] text-muted-foreground mb-5 text-center max-w-sm">
+                  Enter the access passphrase to unlock the scan history vault.
+                </p>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (historyKeyInput === HISTORY_PASSPHRASE) {
+                    setHistoryUnlocked(true);
+                    try { localStorage.setItem(HISTORY_UNLOCK_KEY, '1'); } catch { /* ignore */ }
+                    toast.success('🔓 History unlocked');
+                  } else {
+                    toast.error('Wrong passphrase');
+                    setHistoryKeyInput('');
+                  }
+                }} className="flex gap-2 w-full max-w-sm">
+                  <input type="password" value={historyKeyInput} onChange={e => setHistoryKeyInput(e.target.value)}
+                    placeholder="Access passphrase…"
+                    className="flex-1 bg-background/60 border border-border rounded-lg px-3 py-2 text-xs text-foreground font-mono outline-none focus:border-primary/40" />
+                  <button type="submit" className="px-4 py-2 rounded-lg bg-primary/15 border border-primary/30 text-primary text-xs font-bold hover:bg-primary/25">
+                    Unlock
+                  </button>
+                </form>
+              </div>
+            ) : (history.length === 0 ? <Empty msg="No scan history yet." /> : (
+              <div>
+                <div className="flex items-center justify-between mb-2 px-2">
+                  <span className="text-[10.5px] text-muted-foreground">{history.length} scan{history.length === 1 ? '' : 's'} stored</span>
+                  <button onClick={() => { setHistoryUnlocked(false); try { localStorage.removeItem(HISTORY_UNLOCK_KEY); } catch { /* ignore */ } toast.info('History re-locked'); }}
+                    className="text-[10px] text-muted-foreground hover:text-destructive flex items-center gap-1">
+                    <Lock size={9} /> Re-lock
+                  </button>
                 </div>
-              ))}</div>
-            ))}
+                {history.map(h => (
+                  <div key={h.id} className="flex items-center gap-3 py-2.5 px-3 border-b border-white/[0.03] hover:bg-primary/[0.02] cursor-pointer transition-colors"
+                    onClick={async () => {
+                      const { data } = await supabase.from('scan_results').select('scan_data, domain').eq('id', h.id).maybeSingle();
+                      if (data?.scan_data) { setScanState({ ...createScanState(), ...(data.scan_data as Record<string, any>) } as ScanState); setTarget(data.domain); setActiveTab('sub'); toast.success(`Loaded scan for ${data.domain}`); }
+                    }}>
+                    <Globe size={14} className="text-primary shrink-0" />
+                    <span className="text-primary font-semibold text-[12px]">{h.domain}</span>
+                    <span className="text-muted-foreground text-[9px] font-mono">{h.scan_type}</span>
+                    <span className="ml-auto text-muted-foreground text-[9px] font-mono">{new Date(h.created_at).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )))}
           </div>
         </div>
       </div>
