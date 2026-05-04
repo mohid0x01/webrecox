@@ -3,6 +3,22 @@
 All notable changes to **WebRecox** (TeamCyberOps Recon Engine) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org).
 
+## [15.1.0] — 2026-05-04
+
+### Added
+- ⚙ **Configurable proxy fallback** (`src/lib/proxyConfig.ts` + `ProxySettingsPanel.tsx`) — enable/disable, timeout slider (3–45s), reorderable provider list (AllOrigins, corsproxy.io, codetabs, thingproxy, cors-anywhere). Persisted in localStorage.
+- 🎯 **Profile selector wired** (`src/lib/scanProfiles.ts`) — Quick / Deep / Stealth now actually toggle module count, concurrency, timeout multiplier, and stealth jitter.
+- 🧬 **Endpoint extractor — major upgrade**: AST walk **plus** regex fallback for concatenated/minified URLs, **plus** `crawlAndAnalyze()` that fetches every `<script src>` from a target and analyzes each.
+- 🔬 **JS Analyzer modal** with three input modes: paste code, multi-file upload, or **crawl target URL**. Severity filter chips, file/line attribution, confidence badges.
+- 🚀 **JS Analyzer button in hero** beside Full Scan, plus a compact button in the top nav.
+- 🖱 **Hover actions on JS rows** — every JS file in the JS tab reveals an "Analyze" button on hover that opens the analyzer pre-loaded with that URL.
+- 🔒 **Secret-gated History tab** — locked by default; passphrase `WebRecox-TeamCyberOps` unlocks. Re-lock from inside the tab.
+- 🐍 **Real Python `tools/` directory** — 11 self-contained, runnable scripts mapped to oneliner categories (`subfind.py`, `dns_resolve.py`, `port_scan.py`, `dir_brute.py`, `js_extract.py`, `endpoint_extract.py`, `tech_detect.py`, `headers_audit.py`, `secret_scan.py`, `cors_check.py`, `nuclei_targets.py`) plus README and requirements.
+
+### Changed
+- `pFetch` and `sf` in `reconEngine.ts` now consume runtime proxy config instead of a hard-coded list.
+- `runFullScan` receives a profile-filtered source map via `applyProfileToSources()`.
+
 ## [15.0.0] — 2026-05-02
 
 ### Added
