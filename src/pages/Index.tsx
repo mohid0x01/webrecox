@@ -280,7 +280,8 @@ const Index = () => {
     if (soundEnabled) playScanStart();
     toast.info(`🔍 Starting scan for ${d}`, { duration: 3000 });
     try {
-      const result = await runFullScan(d, sources,
+      const effectiveSources = applyProfileToSources(profile as ProfileId, sources);
+      const result = await runFullScan(d, effectiveSources,
         (name, status, detail) => {
           setModules(prev => ({ ...prev, [name]: { status, detail } }));
           if (status === 'done') toast.success(`✓ ${name} complete`, { duration: 2000 });
