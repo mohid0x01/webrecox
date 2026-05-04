@@ -776,10 +776,22 @@ const Index = () => {
             {/* JS Files */}
             {activeTab === 'js' && (scanState.js.length === 0 ? <Empty /> : (
               <div>{scanState.js.filter(j => !filter || j.url.includes(filter)).slice(0, 100000000).map((j, i) => (
-                <div key={i} className="flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
+                <div key={i} className="group flex items-center gap-2 py-[7px] border-b border-white/[0.03] hover:bg-primary/[0.02]">
                   <span className="text-muted-foreground w-8 text-right shrink-0">{i + 1}</span>
-                  <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px]">{j.url}</a>
-                  <span className="ml-auto text-muted-foreground text-[9px] shrink-0">{j.source}</span>
+                  <a href={j.url} target="_blank" rel="noreferrer" className="text-primary no-underline hover:underline truncate text-[11px] flex-1">{j.url}</a>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => { setAnalyzerTarget(j.url); setShowAnalyzer(true); }}
+                      className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-[hsl(var(--teal))]/12 border border-[hsl(var(--teal))]/30 text-[hsl(var(--teal))] hover:bg-[hsl(var(--teal))]/20 flex items-center gap-1"
+                      title="Analyze this JS with AST analyzer">
+                      <Microscope size={9} /> Analyze
+                    </button>
+                    <button onClick={() => copyToClipboard(j.url)}
+                      className="px-2 py-0.5 rounded text-[9.5px] font-bold bg-white/[0.04] border border-border text-muted-foreground hover:text-foreground"
+                      title="Copy URL">
+                      <Copy size={9} />
+                    </button>
+                  </div>
+                  <span className="ml-1 text-muted-foreground text-[9px] shrink-0">{j.source}</span>
                 </div>
               ))}</div>
             ))}
