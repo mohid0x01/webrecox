@@ -148,6 +148,13 @@ const Index = () => {
   const [queueDomains, setQueueDomains] = useState('');
   const [queueStatus, setQueueStatus] = useState<{ domain: string; status: string }[]>([]);
   const [shareId, setShareId] = useState<string | null>(null);
+  const [showAnalyzer, setShowAnalyzer] = useState(false);
+  const [analyzerTarget, setAnalyzerTarget] = useState<string>('');
+  const [showProxySettings, setShowProxySettings] = useState(false);
+  const [historyUnlocked, setHistoryUnlocked] = useState<boolean>(() => {
+    try { return localStorage.getItem(HISTORY_UNLOCK_KEY) === '1'; } catch { return false; }
+  });
+  const [historyKeyInput, setHistoryKeyInput] = useState('');
   const scanRef = useRef(false);
   const prevModulesRef = useRef<Record<string, { status: ModuleStatus }>>({});
 
